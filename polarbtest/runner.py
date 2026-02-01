@@ -6,7 +6,7 @@ optimized for evolutionary search and parameter optimization.
 """
 
 import polars as pl
-from typing import Dict, Any, List, Type, Optional, Callable
+from typing import Dict, Any, List, Type, Optional, Callable, Union
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import multiprocessing as mp
 from dataclasses import dataclass
@@ -34,12 +34,14 @@ class BacktestResult:
 
 def backtest(
     strategy_class: Type[Strategy],
-    data: pl.DataFrame,
+    data: Union[pl.DataFrame, Dict[str, pl.DataFrame]],
     params: Optional[Dict[str, Any]] = None,
     initial_cash: float = 100_000.0,
     commission: float = 0.001,
     slippage: float = 0.0005,
     price_columns: Optional[Dict[str, str]] = None,
+    warmup: int = 0,
+    order_delay: int = 0,
 ) -> Dict[str, Any]:
     """
     Run a single backtest.
@@ -49,22 +51,34 @@ def backtest(
 
     Args:
         strategy_class: Strategy class (not instance)
-        data: Polars DataFrame with price data
+        data: Polars DataFrame with price data OR dict mapping asset names to DataFrames
         params: Dictionary of strategy parameters (default None)
         initial_cash: Starting capital (default 100,000)
         commission: Commission rate as fraction (default 0.001 = 0.1%)
         slippage: Slippage rate as fraction (default 0.0005 = 0.05%)
         price_columns: Dict mapping asset names to price columns
+        warmup: Number of bars to skip before executing strategy (default 0)
+        order_delay: Number of bars to delay order execution (default 0)
 
     Returns:
         Dictionary containing backtest results and metrics
 
     Example:
+        # Single asset
         results = backtest(
             MyStrategy,
             data,
             params={"sma_period": 20, "rsi_period": 14},
-            initial_cash=100000
+            initial_cash=100000,
+            warmup=20,
+            order_delay=1
+        )
+
+        # Multi-asset
+        results = backtest(
+            MyStrategy,
+            {"BTC": btc_df, "ETH": eth_df},
+            params={"fast": 10, "slow": 20}
         )
         print(f"Sharpe Ratio: {results['sharpe_ratio']}")
     """
@@ -83,6 +97,8 @@ def backtest(
             commission=commission,
             slippage=slippage,
             price_columns=price_columns,
+            warmup=warmup,
+            order_delay=order_delay,
         )
 
         results = engine.run()
@@ -109,14 +125,22 @@ def _run_backtest_worker(args: tuple) -> BacktestResult:
     Worker function for parallel backtest execution.
 
     Args:
-        args: Tuple of (strategy_class, data, params, initial_cash, commission, slippage, price_columns)
+        args: Tuple of (strategy_class, data, params, initial_cash, commission, slippage, price_columns, warmup, order_delay)
 
     Returns:
         BacktestResult object
     """
-    strategy_class, data, params, initial_cash, commission, slippage, price_columns = (
-        args
-    )
+    (
+        strategy_class,
+        data,
+        params,
+        initial_cash,
+        commission,
+        slippage,
+        price_columns,
+        warmup,
+        order_delay,
+    ) = args
 
     try:
         results = backtest(
@@ -127,6 +151,8 @@ def _run_backtest_worker(args: tuple) -> BacktestResult:
             commission=commission,
             slippage=slippage,
             price_columns=price_columns,
+            warmup=warmup,
+            order_delay=order_delay,
         )
 
         return BacktestResult(
@@ -146,12 +172,14 @@ def _run_backtest_worker(args: tuple) -> BacktestResult:
 
 def backtest_batch(
     strategy_class: Type[Strategy],
-    data: pl.DataFrame,
+    data: Union[pl.DataFrame, Dict[str, pl.DataFrame]],
     param_sets: List[Dict[str, Any]],
     initial_cash: float = 100_000.0,
     commission: float = 0.001,
     slippage: float = 0.0005,
     price_columns: Optional[Dict[str, str]] = None,
+    warmup: int = 0,
+    order_delay: int = 0,
     n_jobs: Optional[int] = None,
     verbose: bool = True,
 ) -> pl.DataFrame:
@@ -202,6 +230,8 @@ def backtest_batch(
             commission,
             slippage,
             price_columns,
+            warmup,
+            order_delay,
         )
         for params in param_sets
     ]
@@ -245,7 +275,7 @@ def backtest_batch(
 
 def optimize(
     strategy_class: Type[Strategy],
-    data: pl.DataFrame,
+    data: Union[pl.DataFrame, Dict[str, pl.DataFrame]],
     param_grid: Dict[str, List[Any]],
     objective: str = "sharpe_ratio",
     maximize: bool = True,
@@ -320,7 +350,7 @@ def optimize(
 
 def walk_forward_analysis(
     strategy_class: Type[Strategy],
-    data: pl.DataFrame,
+    data: Union[pl.DataFrame, Dict[str, pl.DataFrame]],
     param_grid: Dict[str, List[Any]],
     train_periods: int,
     test_periods: int,

@@ -9,7 +9,14 @@ Features:
 - Parallel execution for evolutionary optimization
 """
 
-from polarbtest.core import Strategy, Portfolio, Engine, BacktestContext
+from polarbtest.core import (
+    Strategy,
+    Portfolio,
+    Engine,
+    BacktestContext,
+    standardize_dataframe,
+    merge_asset_dataframes,
+)
 from polarbtest.runner import backtest, backtest_batch
 from polarbtest import indicators
 from polarbtest import metrics
@@ -22,6 +29,8 @@ __all__ = [
     "BacktestContext",
     "backtest",
     "backtest_batch",
+    "standardize_dataframe",
+    "merge_asset_dataframes",
     "indicators",
     "metrics",
 ]

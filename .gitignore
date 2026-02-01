@@ -108,3 +108,5 @@ temp/
 # OS files
 .DS_Store
 Thumbs.db
+
+archive/

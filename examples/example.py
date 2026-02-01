@@ -6,11 +6,13 @@ import polars as pl
 from polarbtest import Strategy, backtest, indicators as ind
 
 
-# Create sample data
+# Create sample data with clear trend
+import math
+
 data = pl.DataFrame(
     {
         "timestamp": range(100),
-        "close": [100 + i * 0.5 + (i % 10 - 5) for i in range(100)],
+        "close": [100 + i * 0.5 + 10 * math.sin(i / 5) for i in range(100)],
     }
 )
 
@@ -18,7 +20,7 @@ data = pl.DataFrame(
 # Define a simple moving average crossover strategy
 class SMACrossStrategy(Strategy):
     def preprocess(self, df):
-        """Calculate moving averages using vectorized Polars operations"""
+        """Calculate moving averages and crossover signals using vectorized Polars operations"""
         fast_period = self.params.get("fast_period", 10)
         slow_period = self.params.get("slow_period", 20)
 
@@ -26,6 +28,11 @@ class SMACrossStrategy(Strategy):
             [
                 ind.sma("close", fast_period).alias("sma_fast"),
                 ind.sma("close", slow_period).alias("sma_slow"),
+            ]
+        ).with_columns(
+            [
+                ind.crossover("sma_fast", "sma_slow").alias("golden_cross"),
+                ind.crossunder("sma_fast", "sma_slow").alias("death_cross"),
             ]
         )
 
@@ -36,10 +43,10 @@ class SMACrossStrategy(Strategy):
             return
 
         # Golden cross: go long
-        if ctx.row["sma_fast"] > ctx.row["sma_slow"]:
+        if ctx.row.get("golden_cross"):
             ctx.portfolio.order_target_percent("asset", 1.0)
         # Death cross: close position
-        else:
+        elif ctx.row.get("death_cross"):
             ctx.portfolio.close_position("asset")
 
 

@@ -9,10 +9,133 @@ This module provides the fundamental building blocks for backtesting:
 """
 
 import polars as pl
-from typing import Dict, Optional, Any, List
+from typing import Dict, Optional, Any, List, Union
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from collections import defaultdict
+
+
+def standardize_dataframe(
+    df: pl.DataFrame,
+    timestamp_col: Optional[str] = None,
+    auto_detect: bool = True,
+) -> pl.DataFrame:
+    """
+    Standardize a DataFrame by renaming common timestamp column names to 'timestamp'.
+
+    Args:
+        df: Input DataFrame
+        timestamp_col: Specific timestamp column to rename (if None, auto-detect)
+        auto_detect: Auto-detect common timestamp column names (default True)
+
+    Returns:
+        DataFrame with standardized column names
+
+    Example:
+        # Auto-detect and rename
+        df = standardize_dataframe(df)
+
+        # Specify column explicitly
+        df = standardize_dataframe(df, timestamp_col="datetime")
+    """
+    df = df.clone()
+
+    # If timestamp column already exists, we're done
+    if "timestamp" in df.columns:
+        return df
+
+    # If specific column provided, rename it
+    if timestamp_col and timestamp_col in df.columns:
+        return df.rename({timestamp_col: "timestamp"})
+
+    # Auto-detect common timestamp column names
+    if auto_detect:
+        common_names = ["date", "datetime", "time", "dt", "Date", "DateTime", "Time"]
+        for name in common_names:
+            if name in df.columns:
+                return df.rename({name: "timestamp"})
+
+    # No timestamp column found or needed
+    return df
+
+
+def merge_asset_dataframes(
+    data_dict: Dict[str, pl.DataFrame],
+    price_column: str = "close",
+) -> tuple[pl.DataFrame, Dict[str, str]]:
+    """
+    Merge multiple asset dataframes into a single wide-format dataframe.
+
+    Args:
+        data_dict: Dictionary mapping asset names to their dataframes
+        price_column: Name of the price column in each dataframe (default "close")
+
+    Returns:
+        Tuple of (merged_dataframe, price_columns_mapping)
+
+    Example:
+        btc_df = pl.DataFrame({"timestamp": [...], "close": [...]})
+        eth_df = pl.DataFrame({"timestamp": [...], "close": [...]})
+
+        merged_df, price_cols = merge_asset_dataframes({
+            "BTC": btc_df,
+            "ETH": eth_df
+        })
+        # merged_df has columns: timestamp, BTC_close, ETH_close
+        # price_cols = {"BTC": "BTC_close", "ETH": "ETH_close"}
+    """
+    if not data_dict:
+        raise ValueError("data_dict cannot be empty")
+
+    # Standardize all dataframes
+    standardized = {asset: standardize_dataframe(df) for asset, df in data_dict.items()}
+
+    # Start with the first dataframe's timestamp
+    first_asset = list(standardized.keys())[0]
+    merged = (
+        standardized[first_asset].select(["timestamp"])
+        if "timestamp" in standardized[first_asset].columns
+        else None
+    )
+
+    # Build price columns mapping
+    price_columns = {}
+
+    # Merge all dataframes
+    for asset, df in standardized.items():
+        # Rename price column to include asset name
+        new_col_name = f"{asset}_{price_column}"
+        price_columns[asset] = new_col_name
+
+        # Select timestamp and price columns
+        if "timestamp" in df.columns:
+            df_subset = df.select(["timestamp", price_column]).rename(
+                {price_column: new_col_name}
+            )
+
+            if merged is None:
+                merged = df_subset
+            else:
+                # Join on timestamp using coalesce to avoid duplicate timestamp columns
+                merged = merged.join(
+                    df_subset, on="timestamp", how="outer", coalesce=True
+                )
+        else:
+            # No timestamp - add index and merge
+            df_subset = df.select([price_column]).rename({price_column: new_col_name})
+            if merged is None:
+                merged = df_subset
+            else:
+                merged = pl.concat([merged, df_subset], how="horizontal")
+
+    # Sort by timestamp if it exists
+    if merged is not None and "timestamp" in merged.columns:
+        merged = merged.sort("timestamp")
+
+    if merged is None:
+        raise ValueError("Failed to merge dataframes")
+
+    return merged, price_columns
 
 
 @dataclass
@@ -49,6 +172,7 @@ class Portfolio:
         initial_cash: float = 100_000.0,
         commission: float = 0.001,  # 0.1% per trade
         slippage: float = 0.0005,  # 0.05% slippage
+        order_delay: int = 0,  # Number of bars to delay order execution
     ):
         """
         Initialize a new portfolio.
@@ -57,11 +181,13 @@ class Portfolio:
             initial_cash: Starting cash balance
             commission: Commission rate as a fraction (e.g., 0.001 = 0.1%)
             slippage: Slippage rate as a fraction (e.g., 0.0005 = 0.05%)
+            order_delay: Number of bars to delay order execution (0 = immediate, 1 = next bar)
         """
         self.initial_cash = initial_cash
         self.cash = initial_cash
         self.commission = commission
         self.slippage = slippage
+        self.order_delay = order_delay
 
         # Asset positions: {asset_name: quantity}
         self.positions: Dict[str, float] = defaultdict(float)
@@ -73,14 +199,21 @@ class Portfolio:
         # Current prices for portfolio valuation
         self._current_prices: Dict[str, float] = {}
 
-    def update_prices(self, prices: Dict[str, float]):
+        # Pending orders queue: List of (bar_to_execute, asset, quantity, limit_price)
+        self._pending_orders: List[tuple[int, str, float, Optional[float]]] = []
+        self._current_bar: int = 0
+
+    def update_prices(self, prices: Dict[str, float], bar_index: int = 0):
         """
-        Update current market prices for all assets.
+        Update current market prices for all assets and execute pending orders.
 
         Args:
             prices: Dictionary mapping asset names to current prices
+            bar_index: Current bar index (used for order delay)
         """
         self._current_prices = prices
+        self._current_bar = bar_index
+        self._execute_pending_orders()
 
     def get_value(self) -> float:
         """
@@ -107,11 +240,32 @@ class Portfolio:
         """
         return self.positions.get(asset, 0.0)
 
-    def order(
+    def _execute_pending_orders(self):
+        """Execute orders that are due based on order_delay."""
+        if not self._pending_orders:
+            return
+
+        # Filter orders that should execute this bar
+        orders_to_execute = [
+            (asset, qty, price)
+            for (bar, asset, qty, price) in self._pending_orders
+            if bar <= self._current_bar
+        ]
+
+        # Remove executed orders from pending
+        self._pending_orders = [
+            order for order in self._pending_orders if order[0] > self._current_bar
+        ]
+
+        # Execute the orders
+        for asset, quantity, limit_price in orders_to_execute:
+            self._execute_order_immediate(asset, quantity, limit_price)
+
+    def _execute_order_immediate(
         self, asset: str, quantity: float, limit_price: Optional[float] = None
     ) -> bool:
         """
-        Place an order for an asset.
+        Execute an order immediately at current prices.
 
         Args:
             asset: Asset name
@@ -159,6 +313,32 @@ class Portfolio:
             if abs(self.positions[asset]) < 1e-10:
                 del self.positions[asset]
 
+        return True
+
+    def order(
+        self, asset: str, quantity: float, limit_price: Optional[float] = None
+    ) -> bool:
+        """
+        Place an order for an asset.
+
+        Args:
+            asset: Asset name
+            quantity: Number of units to buy (positive) or sell (negative)
+            limit_price: Optional limit price (uses current market price if None)
+
+        Returns:
+            True if order was placed/queued, False otherwise
+        """
+        if quantity == 0:
+            return False
+
+        # If order_delay is 0, execute immediately
+        if self.order_delay == 0:
+            return self._execute_order_immediate(asset, quantity, limit_price)
+
+        # Otherwise, queue the order for future execution
+        execute_at_bar = self._current_bar + self.order_delay
+        self._pending_orders.append((execute_at_bar, asset, quantity, limit_price))
         return True
 
     def order_target(
@@ -350,48 +530,67 @@ class Engine:
     def __init__(
         self,
         strategy: Strategy,
-        data: pl.DataFrame,
+        data: Union[pl.DataFrame, Dict[str, pl.DataFrame]],
         initial_cash: float = 100_000.0,
         commission: float = 0.001,
         slippage: float = 0.0005,
         price_columns: Optional[Dict[str, str]] = None,
+        warmup: int = 0,
+        order_delay: int = 0,
     ):
         """
         Initialize the backtesting engine.
 
         Args:
             strategy: Strategy instance to backtest
-            data: Polars DataFrame with price data
+            data: Polars DataFrame with price data OR dict mapping asset names to DataFrames
             initial_cash: Starting cash balance
             commission: Commission rate as fraction
             slippage: Slippage rate as fraction
             price_columns: Dict mapping asset names to price columns
-                          (default: {"close": "close"} for single asset)
+                          (default: auto-detected for dict input, {"asset": "close"} for single DataFrame)
+            warmup: Number of bars to skip before executing strategy (default 0)
+            order_delay: Number of bars to delay order execution (default 0, max realism is 1)
         """
         self.strategy = strategy
-        self.data = data
         self.initial_cash = initial_cash
         self.commission = commission
         self.slippage = slippage
+        self.warmup = warmup
+        self.order_delay = order_delay
 
-        # If no price columns specified, assume single asset with "close" column
-        if price_columns is None:
-            # Try to detect available price column
-            if "close" in data.columns:
-                self.price_columns = {"asset": "close"}
+        # Handle dict of dataframes or single dataframe
+        if isinstance(data, dict):
+            # Merge multiple asset dataframes
+            self.data, auto_price_columns = merge_asset_dataframes(data)
+            # Use auto-detected price columns if not specified
+            if price_columns is None:
+                self.price_columns = auto_price_columns
             else:
-                # Find first numeric column
-                numeric_cols = [
-                    c
-                    for c in data.columns
-                    if data[c].dtype in [pl.Float64, pl.Float32, pl.Int64, pl.Int32]
-                ]
-                if numeric_cols:
-                    self.price_columns = {"asset": numeric_cols[0]}
-                else:
-                    raise ValueError("No price columns found in data")
+                self.price_columns = price_columns
         else:
-            self.price_columns = price_columns
+            # Single dataframe - standardize it
+            self.data = standardize_dataframe(data)
+
+            # If no price columns specified, assume single asset with "close" column
+            if price_columns is None:
+                # Try to detect available price column
+                if "close" in self.data.columns:
+                    self.price_columns = {"asset": "close"}
+                else:
+                    # Find first numeric column
+                    numeric_cols = [
+                        c
+                        for c in self.data.columns
+                        if self.data[c].dtype
+                        in [pl.Float64, pl.Float32, pl.Int64, pl.Int32]
+                    ]
+                    if numeric_cols:
+                        self.price_columns = {"asset": numeric_cols[0]}
+                    else:
+                        raise ValueError("No price columns found in data")
+            else:
+                self.price_columns = price_columns
 
         self.portfolio: Optional[Portfolio] = None
         self.results: Optional[Dict[str, Any]] = None
@@ -408,6 +607,7 @@ class Engine:
             initial_cash=self.initial_cash,
             commission=self.commission,
             slippage=self.slippage,
+            order_delay=self.order_delay,
         )
 
         # Preprocess data using strategy
@@ -438,7 +638,7 @@ class Engine:
             }
 
             # Update portfolio with current prices
-            self.portfolio.update_prices(current_prices)
+            self.portfolio.update_prices(current_prices, idx)
 
             # Create context for strategy
             ctx = BacktestContext(
@@ -448,8 +648,9 @@ class Engine:
                 bar_index=idx,
             )
 
-            # Call strategy logic
-            self.strategy.next(ctx)
+            # Call strategy logic (skip warmup period)
+            if idx >= self.warmup:
+                self.strategy.next(ctx)
 
             # Record equity for metrics
             self.portfolio.record_equity(ctx.timestamp)
