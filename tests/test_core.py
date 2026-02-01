@@ -127,9 +127,6 @@ class SimpleStrategy(Strategy):
         )
 
     def next(self, ctx: BacktestContext) -> None:
-        if ctx.row.get("sma") is None:
-            return
-
         # Simple strategy: buy when above SMA, sell when below
         if ctx.row["close"] > ctx.row["sma"]:
             ctx.portfolio.order_target_percent("asset", 1.0)
@@ -167,15 +164,16 @@ class TestEngine:
         data = pl.DataFrame(
             {
                 "timestamp": range(50),
-                "close": [100 + i * 2 for i in range(50)],
+                "close": [100.0 + i * 2.0 for i in range(50)],  # Use floats
             }
         )
 
         strategy = SimpleStrategy(sma_period=5)
+        # Auto warmup is default, which will skip first 4 bars (5-period SMA)
         engine = Engine(strategy, data, initial_cash=100_000)
         results = engine.run()
 
-        # Should make profit in uptrend
+        # Should make profit in uptrend (enough bars left to trade)
         assert results["total_return"] > 0
 
     def test_multiple_assets(self):

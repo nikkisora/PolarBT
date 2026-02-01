@@ -1,7 +1,7 @@
 """
-Example demonstrating multi-asset strategy with new features:
+Example demonstrating multi-asset strategy with features:
 - Multiple dataframes passed as dict
-- Automatic warmup period
+- Automatic warmup period (default)
 - Order delay for realistic execution
 - Standardized column names
 """
@@ -44,10 +44,6 @@ class MomentumPortfolio(Strategy):
         btc_mom = ctx.row.get("btc_momentum")
         eth_mom = ctx.row.get("eth_momentum")
 
-        # Skip if indicators not ready
-        if btc_mom is None or eth_mom is None:
-            return
-
         # Allocate 100% to strongest momentum asset
         if btc_mom > eth_mom:
             ctx.portfolio.order_target_percent("BTC", 1.0)
@@ -70,7 +66,7 @@ if __name__ == "__main__":
         },
         params={"lookback": 20},
         initial_cash=100_000,
-        warmup=20,  # Auto-skip first 20 bars
+        # warmup="auto" is the default - automatically skips bars until all indicators are ready
         order_delay=1,  # Orders execute next bar (more realistic)
     )
 

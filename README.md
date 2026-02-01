@@ -45,9 +45,6 @@ class SMACrossStrategy(Strategy):
     
     def next(self, ctx):
         """Execute strategy logic on each bar"""
-        if ctx.row.get("sma_fast") is None:
-            return
-        
         # Golden cross: go long
         if ctx.row["sma_fast"] > ctx.row["sma_slow"]:
             ctx.portfolio.order_target_percent("asset", 1.0)
@@ -86,9 +83,6 @@ class MultiAssetMomentumStrategy(Strategy):
         ])
     
     def next(self, ctx):
-        if ctx.bar_index < 20:
-            return
-        
         # Allocate to top 2 assets by momentum
         assets = [
             ("BTC", ctx.row.get("btc_momentum", 0)),
@@ -165,9 +159,6 @@ class MLStrategy(Strategy):
         ])
     
     def next(self, ctx):
-        if ctx.bar_index < 20:
-            return
-        
         signal = ctx.row.get("ml_signal", 0)
         
         # Trade based on ML prediction
@@ -264,6 +255,44 @@ ctx.portfolio.close_all_positions()       # Close all positions
 # Check positions
 position = ctx.portfolio.get_position("BTC")
 total_value = ctx.portfolio.get_value()
+```
+
+## Automatic Warmup
+
+By default, PolarBtest uses **automatic warmup** to handle indicator initialization:
+
+```python
+# Default behavior - auto warmup (recommended)
+results = backtest(MyStrategy, data, params={...})
+
+# Explicitly set auto warmup
+results = backtest(MyStrategy, data, params={...}, warmup="auto")
+
+# Manual warmup - skip first 20 bars
+results = backtest(MyStrategy, data, params={...}, warmup=20)
+
+# No warmup - start trading immediately
+results = backtest(MyStrategy, data, params={...}, warmup=0)
+```
+
+### How Auto Warmup Works
+
+When `warmup="auto"` (the default):
+1. The engine preprocesses your data to calculate all indicators
+2. It finds the first bar where **all columns** have non-null values
+3. Strategy execution begins at that bar automatically
+
+
+### When to Use Manual Warmup
+
+Use an explicit integer for `warmup` when:
+- You want to skip additional bars beyond indicator warmup
+- You're implementing a custom warmup strategy
+- You need consistent warmup across different parameter sets
+
+```python
+# Force 50 bars of warmup regardless of indicators
+results = backtest(MyStrategy, data, warmup=50)
 ```
 
 ## Performance Metrics

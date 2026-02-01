@@ -535,7 +535,7 @@ class Engine:
         commission: float = 0.001,
         slippage: float = 0.0005,
         price_columns: Optional[Dict[str, str]] = None,
-        warmup: int = 0,
+        warmup: Union[int, str] = "auto",
         order_delay: int = 0,
     ):
         """
@@ -549,13 +549,22 @@ class Engine:
             slippage: Slippage rate as fraction
             price_columns: Dict mapping asset names to price columns
                           (default: auto-detected for dict input, {"asset": "close"} for single DataFrame)
-            warmup: Number of bars to skip before executing strategy (default 0)
+            warmup: Number of bars to skip before executing strategy, or "auto" to automatically
+                   detect when all indicators are ready (default "auto")
             order_delay: Number of bars to delay order execution (default 0, max realism is 1)
         """
         self.strategy = strategy
         self.initial_cash = initial_cash
         self.commission = commission
         self.slippage = slippage
+
+        # Validate warmup parameter
+        if isinstance(warmup, str):
+            if warmup != "auto":
+                raise ValueError(f"warmup must be an integer or 'auto', got '{warmup}'")
+        elif not isinstance(warmup, int):
+            raise ValueError(f"warmup must be an integer or 'auto', got {type(warmup)}")
+
         self.warmup = warmup
         self.order_delay = order_delay
 
@@ -595,6 +604,46 @@ class Engine:
         self.portfolio: Optional[Portfolio] = None
         self.results: Optional[Dict[str, Any]] = None
 
+    def _calculate_auto_warmup(self, df: pl.DataFrame) -> int:
+        """
+        Calculate automatic warmup period by finding the first row where all columns are non-null.
+
+        This method finds the first bar where all indicators and data are ready.
+        Excludes timestamp columns from the check.
+
+        Args:
+            df: Preprocessed DataFrame with indicators
+
+        Returns:
+            Integer warmup period (number of bars to skip before executing strategy)
+
+        Example:
+            If indicators need 20 bars to warm up, this will return 20.
+        """
+        # Get columns to check (exclude timestamp-related columns)
+        timestamp_cols = {"timestamp", "date", "datetime", "time", "dt", "_index"}
+        cols_to_check = [col for col in df.columns if col not in timestamp_cols]
+
+        if not cols_to_check:
+            # No columns to check, no warmup needed
+            return 0
+
+        # Find the first row where all columns are non-null
+        # Create a boolean column that is True when all cols_to_check are non-null
+        all_non_null = df.select(
+            pl.all_horizontal(
+                [pl.col(col).is_not_null() for col in cols_to_check]
+            ).alias("all_valid")
+        )
+
+        # Find the index of the first True value
+        for idx, row in enumerate(all_non_null.iter_rows()):
+            if row[0]:  # First (and only) column is "all_valid"
+                return idx
+
+        # If no row has all non-null values, return length - 1 (skip all but last)
+        return max(0, len(df) - 1)
+
     def run(self) -> Dict[str, Any]:
         """
         Run the backtest simulation.
@@ -612,6 +661,13 @@ class Engine:
 
         # Preprocess data using strategy
         processed_data = self.strategy.preprocess(self.data)
+
+        # Calculate warmup period if set to "auto"
+        warmup_periods: int
+        if self.warmup == "auto":
+            warmup_periods = self._calculate_auto_warmup(processed_data)
+        else:
+            warmup_periods = self.warmup  # type: ignore
 
         # Ensure we have a timestamp column
         timestamp_col = None
@@ -649,7 +705,7 @@ class Engine:
             )
 
             # Call strategy logic (skip warmup period)
-            if idx >= self.warmup:
+            if idx >= warmup_periods:
                 self.strategy.next(ctx)
 
             # Record equity for metrics

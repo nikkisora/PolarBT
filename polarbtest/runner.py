@@ -40,7 +40,7 @@ def backtest(
     commission: float = 0.001,
     slippage: float = 0.0005,
     price_columns: Optional[Dict[str, str]] = None,
-    warmup: int = 0,
+    warmup: Union[int, str] = "auto",
     order_delay: int = 0,
 ) -> Dict[str, Any]:
     """
@@ -57,28 +57,28 @@ def backtest(
         commission: Commission rate as fraction (default 0.001 = 0.1%)
         slippage: Slippage rate as fraction (default 0.0005 = 0.05%)
         price_columns: Dict mapping asset names to price columns
-        warmup: Number of bars to skip before executing strategy (default 0)
+        warmup: Number of bars to skip before executing strategy, or "auto" to automatically
+               detect when all indicators are ready (default "auto")
         order_delay: Number of bars to delay order execution (default 0)
 
     Returns:
         Dictionary containing backtest results and metrics
 
     Example:
-        # Single asset
+        # Single asset with auto warmup (default)
         results = backtest(
             MyStrategy,
             data,
             params={"sma_period": 20, "rsi_period": 14},
-            initial_cash=100000,
-            warmup=20,
-            order_delay=1
+            initial_cash=100000
         )
 
-        # Multi-asset
+        # Multi-asset with manual warmup
         results = backtest(
             MyStrategy,
             {"BTC": btc_df, "ETH": eth_df},
-            params={"fast": 10, "slow": 20}
+            params={"fast": 10, "slow": 20},
+            warmup=20  # or warmup="auto" (default)
         )
         print(f"Sharpe Ratio: {results['sharpe_ratio']}")
     """
@@ -178,7 +178,7 @@ def backtest_batch(
     commission: float = 0.001,
     slippage: float = 0.0005,
     price_columns: Optional[Dict[str, str]] = None,
-    warmup: int = 0,
+    warmup: Union[int, str] = "auto",
     order_delay: int = 0,
     n_jobs: Optional[int] = None,
     verbose: bool = True,
@@ -197,6 +197,8 @@ def backtest_batch(
         commission: Commission rate
         slippage: Slippage rate
         price_columns: Dict mapping asset names to price columns
+        warmup: Number of bars to skip or "auto" (default "auto")
+        order_delay: Number of bars to delay order execution (default 0)
         n_jobs: Number of parallel jobs (default: all CPUs)
         verbose: Print progress (default True)
 
@@ -283,6 +285,8 @@ def optimize(
     commission: float = 0.001,
     slippage: float = 0.0005,
     price_columns: Optional[Dict[str, str]] = None,
+    warmup: Union[int, str] = "auto",
+    order_delay: int = 0,
     n_jobs: Optional[int] = None,
     verbose: bool = True,
 ) -> Dict[str, Any]:
@@ -299,6 +303,8 @@ def optimize(
         commission: Commission rate
         slippage: Slippage rate
         price_columns: Asset price columns
+        warmup: Number of bars to skip or "auto" (default "auto")
+        order_delay: Number of bars to delay order execution (default 0)
         n_jobs: Number of parallel jobs
         verbose: Print progress
 
@@ -335,6 +341,8 @@ def optimize(
         commission=commission,
         slippage=slippage,
         price_columns=price_columns,
+        warmup=warmup,
+        order_delay=order_delay,
         n_jobs=n_jobs,
         verbose=verbose,
     )
@@ -360,6 +368,8 @@ def walk_forward_analysis(
     commission: float = 0.001,
     slippage: float = 0.0005,
     price_columns: Optional[Dict[str, str]] = None,
+    warmup: Union[int, str] = "auto",
+    order_delay: int = 0,
     anchored: bool = False,
     verbose: bool = True,
 ) -> pl.DataFrame:
@@ -378,6 +388,8 @@ def walk_forward_analysis(
         commission: Commission rate
         slippage: Slippage rate
         price_columns: Asset price columns
+        warmup: Number of bars to skip or "auto" (default "auto")
+        order_delay: Number of bars to delay order execution (default 0)
         anchored: Use anchored walk-forward (default False)
         verbose: Print progress
 
@@ -432,6 +444,8 @@ def walk_forward_analysis(
             commission=commission,
             slippage=slippage,
             price_columns=price_columns,
+            warmup=warmup,
+            order_delay=order_delay,
             verbose=False,
         )
 
@@ -444,6 +458,8 @@ def walk_forward_analysis(
             commission=commission,
             slippage=slippage,
             price_columns=price_columns,
+            warmup=warmup,
+            order_delay=order_delay,
         )
 
         results.append(

@@ -38,10 +38,6 @@ class SMACrossStrategy(Strategy):
 
     def next(self, ctx):
         """Execute strategy logic on each bar"""
-        # Wait for indicators to warm up
-        if ctx.row.get("sma_fast") is None or ctx.row.get("sma_slow") is None:
-            return
-
         # Golden cross: go long
         if ctx.row.get("golden_cross"):
             ctx.portfolio.order_target_percent("asset", 1.0)

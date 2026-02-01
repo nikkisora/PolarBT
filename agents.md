@@ -134,22 +134,33 @@ engine = Engine(
     initial_cash=100_000,
     commission=0.001,          # 0.1%
     slippage=0.0005,          # 0.05%
-    price_columns={"BTC": "btc_close", "ETH": "eth_close"}
+    price_columns={"BTC": "btc_close", "ETH": "eth_close"},
+    warmup="auto",            # Default: auto-detect warmup period
+    order_delay=0,            # Default: execute immediately
 )
 
 results = engine.run()
 ```
 
+**Warmup Parameter:**
+- `warmup="auto"` (default): Automatically skip bars until all indicators are ready
+- `warmup=N` (integer): Manually skip first N bars
+- `warmup=0`: No warmup, start immediately
+
+The auto warmup feature finds the first bar where all columns (except timestamp) are non-null,
+ensuring your strategy only executes when all indicators have valid values.
+
 **Execution Flow:**
 1. Call `strategy.preprocess(data)` to generate features
-2. Call `strategy.on_start(portfolio)`
-3. For each bar:
+2. Calculate warmup period (if warmup="auto")
+3. Call `strategy.on_start(portfolio)`
+4. For each bar:
    - Update portfolio prices
    - Create BacktestContext
-   - Call `strategy.next(ctx)`
+   - Call `strategy.next(ctx)` (only after warmup period)
    - Record equity
-4. Call `strategy.on_finish(portfolio)`
-5. Calculate and return metrics
+5. Call `strategy.on_finish(portfolio)`
+6. Calculate and return metrics
 
 ### 5. Indicators (`indicators.py`)
 
@@ -276,9 +287,29 @@ def next(self, ctx):
     sma = sum(last_20_prices) / len(last_20_prices)
 ```
 
-### 2. Handle Missing Data
+### 2. Automatic Warmup (Default)
 
-Always check for None/NaN in `next()`:
+The engine automatically skips bars until all indicators are ready:
+```python
+# Use default auto warmup - no manual checks needed
+results = backtest(MyStrategy, data, params={...})
+
+# Or explicitly set it
+results = backtest(MyStrategy, data, warmup="auto")
+
+# Manual warmup if needed
+results = backtest(MyStrategy, data, warmup=20)
+```
+
+With auto warmup enabled (default), you don't need to check for None values in `next()`:
+```python
+def next(self, ctx):
+    # Auto warmup ensures indicators are ready
+    if ctx.row["close"] > ctx.row["sma"]:
+        ctx.portfolio.order_target_percent("asset", 1.0)
+```
+
+If you disable auto warmup (`warmup=0`), you should add defensive checks:
 ```python
 def next(self, ctx):
     if ctx.row.get("sma") is None:
@@ -289,16 +320,7 @@ def next(self, ctx):
         ...
 ```
 
-### 3. Use Bar Index for Warmup
-
-Skip initial bars while indicators are warming up:
-```python
-def next(self, ctx):
-    if ctx.bar_index < 20:
-        return  # Wait for indicators to stabilize
-```
-
-### 4. ML Model Integration
+### 3. ML Model Integration
 
 Train models in `preprocess()`, not `next()`:
 ```python
@@ -331,7 +353,7 @@ def next(self, ctx):
         ctx.portfolio.order_target_percent("asset", 1.0)
 ```
 
-### 5. Position Sizing
+### 4. Position Sizing
 
 Use percentage-based sizing for robustness:
 ```python
@@ -342,7 +364,7 @@ ctx.portfolio.order_target_percent("BTC", 0.5)  # 50% allocation
 ctx.portfolio.order("BTC", 1.0)  # Always 1 BTC
 ```
 
-### 6. Multi-Asset Strategies
+### 5. Multi-Asset Strategies
 
 Explicitly specify price columns:
 ```python
