@@ -10,6 +10,7 @@ import polars as pl
 
 from polarbtest import Strategy, backtest
 from polarbtest import indicators as ind
+from polarbtest.core import BacktestContext
 
 # Create sample data for multiple assets
 btc_data = pl.DataFrame(
@@ -29,7 +30,7 @@ eth_data = pl.DataFrame(
 
 # Define a momentum-based portfolio strategy
 class MomentumPortfolio(Strategy):
-    def preprocess(self, df):
+    def preprocess(self, df: pl.DataFrame) -> pl.DataFrame:
         """Calculate momentum indicators for all assets"""
         lookback = self.params.get("lookback", 20)
 
@@ -40,7 +41,7 @@ class MomentumPortfolio(Strategy):
             ]
         )
 
-    def next(self, ctx):
+    def next(self, ctx: BacktestContext) -> None:
         """Allocate to asset with strongest momentum"""
         btc_mom = ctx.row.get("btc_momentum")
         eth_mom = ctx.row.get("eth_momentum")

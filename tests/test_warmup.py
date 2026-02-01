@@ -169,7 +169,7 @@ class TestWarmupExecution:
     def test_auto_warmup_execution_start(self, sample_data):
         """Test strategy starts at correct bar with auto warmup."""
         strategy = TrackingStrategy(period=20)
-        results = backtest(TrackingStrategy, sample_data, params={"period": 20})
+        backtest(TrackingStrategy, sample_data, params={"period": 20})
 
         # Should start at bar 19 (first bar where SMA is available)
         # Note: We can't easily access the strategy instance from backtest()
@@ -283,7 +283,7 @@ class TestWarmupEdgeCases:
         short_data = sample_data.head(10)
         strategy = TrackingStrategy()
         engine = Engine(strategy, short_data, warmup=20)
-        results = engine.run()
+        engine.run()
 
         # Should handle gracefully - strategy never executes
         assert strategy.first_execution_bar is None
@@ -359,7 +359,7 @@ class TestWarmupEdgeCases:
 
         strategy = NoIndicatorStrategy()
         engine = Engine(strategy, data, warmup="auto")
-        results = engine.run()
+        engine.run()
 
         # Should execute once
         assert strategy.first_execution_bar == 0
@@ -420,7 +420,6 @@ class TestWarmupWithMultiAsset:
                 if self.first_bar is None:
                     self.first_bar = ctx.bar_index
 
-        strategy = MultiAssetTracker()
         results = backtest(MultiAssetTracker, data, params={})
 
         assert results["success"]

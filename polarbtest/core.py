@@ -110,18 +110,11 @@ def merge_asset_dataframes(
         if "timestamp" in df.columns:
             df_subset = df.select(["timestamp", price_column]).rename({price_column: new_col_name})
 
-            if merged is None:
-                merged = df_subset
-            else:
-                # Join on timestamp using coalesce to avoid duplicate timestamp columns
-                merged = merged.join(df_subset, on="timestamp", how="outer", coalesce=True)
+            merged = df_subset if merged is None else merged.join(df_subset, on="timestamp", how="outer", coalesce=True)
         else:
             # No timestamp - add index and merge
             df_subset = df.select([price_column]).rename({price_column: new_col_name})
-            if merged is None:
-                merged = df_subset
-            else:
-                merged = pl.concat([merged, df_subset], how="horizontal")
+            merged = df_subset if merged is None else pl.concat([merged, df_subset], how="horizontal")
 
     if merged is not None and "timestamp" in merged.columns:
         merged = merged.sort("timestamp")
@@ -206,7 +199,7 @@ class Portfolio:
         self._pending_orders: list[tuple[int, str, float, float | None]] = []
         self._current_bar: int = 0
 
-    def update_prices(self, prices: dict[str, float], bar_index: int = 0):
+    def update_prices(self, prices: dict[str, float], bar_index: int = 0) -> None:
         """
         Update current market prices for all assets and execute pending orders.
 
@@ -240,7 +233,7 @@ class Portfolio:
         """
         return self.positions.get(asset, 0.0)
 
-    def _execute_pending_orders(self):
+    def _execute_pending_orders(self) -> None:
         """Execute orders that are due based on order_delay."""
         if not self._pending_orders:
             return
@@ -279,10 +272,7 @@ class Portfolio:
             return False
 
         # Apply slippage (buy at higher price, sell at lower price)
-        if quantity > 0:  # Buy
-            execution_price = price * (1 + self.slippage)
-        else:  # Sell
-            execution_price = price * (1 - self.slippage)
+        execution_price = price * (1 + self.slippage) if quantity > 0 else price * (1 - self.slippage)
 
         # Calculate total cost including commission
         gross_cost = abs(quantity) * execution_price
@@ -456,7 +446,7 @@ class Strategy(ABC):
     - next(): Event-driven logic called on each bar
     """
 
-    def __init__(self, **params):
+    def __init__(self, **params: Any) -> None:
         """
         Initialize strategy with parameters.
 
@@ -509,7 +499,7 @@ class Strategy(ABC):
         """
         pass
 
-    def on_start(self, portfolio: Portfolio) -> None:
+    def on_start(self, portfolio: Portfolio) -> None: # noqa: B027
         """
         Called once before the backtest starts.
 
@@ -520,7 +510,7 @@ class Strategy(ABC):
         """
         pass
 
-    def on_finish(self, portfolio: Portfolio) -> None:
+    def on_finish(self, portfolio: Portfolio) -> None: # noqa: B027
         """
         Called once after the backtest completes.
 
@@ -679,10 +669,7 @@ class Engine:
 
         # Calculate warmup period if set to "auto"
         warmup_periods: int
-        if self.warmup == "auto":
-            warmup_periods = self._calculate_auto_warmup(processed_data)
-        else:
-            warmup_periods = self.warmup  # type: ignore
+        warmup_periods = self._calculate_auto_warmup(processed_data) if self.warmup == "auto" else self.warmup  # type: ignore
 
         # Ensure we have a timestamp column
         timestamp_col = None
@@ -703,7 +690,10 @@ class Engine:
         # Main event loop - iterate through bars
         for idx, row_dict in enumerate(processed_data.iter_rows(named=True)):
             # Extract current prices for all assets
-            current_prices = {asset: row_dict.get(price_col) for asset, price_col in self.price_columns.items()}
+            current_prices: dict[str, float] = {
+                asset: float(row_dict.get(price_col, 0.0)) if row_dict.get(price_col) is not None else 0.0
+                for asset, price_col in self.price_columns.items()
+            }
 
             # Update portfolio with current prices
             self.portfolio.update_prices(current_prices, idx)

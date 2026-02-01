@@ -9,6 +9,7 @@ import polars as pl
 
 from polarbtest import Strategy, backtest
 from polarbtest import indicators as ind
+from polarbtest.core import BacktestContext
 
 data = pl.DataFrame(
     {
@@ -20,7 +21,7 @@ data = pl.DataFrame(
 
 # Define a simple moving average crossover strategy
 class SMACrossStrategy(Strategy):
-    def preprocess(self, df):
+    def preprocess(self, df: pl.DataFrame) -> pl.DataFrame:
         """Calculate moving averages and crossover signals using vectorized Polars operations"""
         fast_period = self.params.get("fast_period", 10)
         slow_period = self.params.get("slow_period", 20)
@@ -37,7 +38,7 @@ class SMACrossStrategy(Strategy):
             ]
         )
 
-    def next(self, ctx):
+    def next(self, ctx: BacktestContext) -> None:
         """Execute strategy logic on each bar"""
         # Golden cross: go long
         if ctx.row.get("golden_cross"):

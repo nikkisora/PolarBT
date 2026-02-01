@@ -50,7 +50,7 @@ class TestBacktest:
         assert "sharpe_ratio" in results
         assert "total_return" in results
         assert "final_equity" in results
-        assert results["success"] == True
+        assert results["success"]
 
     def test_backtest_different_params(self, sample_data):
         """Test backtest with different parameters."""
@@ -66,7 +66,7 @@ class TestBacktest:
         """Test backtest without parameters."""
         results = backtest(SampleStrategy, sample_data)
         assert results is not None
-        assert results["success"] == True
+        assert results["success"]
 
 
 class TestBatchBacktest:

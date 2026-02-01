@@ -40,7 +40,7 @@ If the issue you encountered is big, stop the implementation, write the outline 
 
 During and after implementing a feature run the test to verify that everything works correctly. Add tests for the new feature, they should be comprehensive but, don't create redundancy if the feature could be tested with additional assertion in an already implemented test do that. Run test with:
 ```bash
-pytest tests/
+pytest tests/ -q
 ```
 
 ### Code review

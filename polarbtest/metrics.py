@@ -39,31 +39,28 @@ def calculate_metrics(equity_df: pl.DataFrame, initial_capital: float) -> dict[s
 
     # Annualized return (assuming daily data)
     num_periods = len(equity_df)
-    if num_periods > 1:
-        cagr = (final_equity / initial_capital) ** (252 / num_periods) - 1
-    else:
-        cagr = 0.0
+    cagr = (final_equity / initial_capital) ** (252 / num_periods) - 1 if num_periods > 1 else 0.0
 
     # Sharpe ratio (annualized, assuming daily returns)
     returns = equity_df["returns"].drop_nulls()
+    mean_return = 0.0
+    std_return = 0.0
     if len(returns) > 0:
-        mean_return = returns.mean()
-        std_return = returns.std()
-        if std_return is not None and std_return > 0:
-            sharpe_ratio = (mean_return / std_return) * np.sqrt(252)
-        else:
-            sharpe_ratio = 0.0
+        mean_return_val = returns.mean()
+        std_return_val = returns.std()
+        # Cast to float for type safety - Polars returns numeric types
+        mean_return = float(mean_return_val) if mean_return_val is not None else 0.0  # type: ignore[arg-type]
+        std_return = float(std_return_val) if std_return_val is not None else 0.0  # type: ignore[arg-type]
+        sharpe_ratio = mean_return / std_return * np.sqrt(252) if std_return > 0 else 0.0
     else:
         sharpe_ratio = 0.0
 
     # Sortino ratio (annualized)
     downside_returns = returns.filter(returns < 0)
     if len(downside_returns) > 0:
-        downside_std = downside_returns.std()
-        if downside_std is not None and downside_std > 0:
-            sortino_ratio = (mean_return / downside_std) * np.sqrt(252)
-        else:
-            sortino_ratio = 0.0
+        downside_std_val = downside_returns.std()
+        downside_std = float(downside_std_val) if downside_std_val is not None else 0.0  # type: ignore[arg-type]
+        sortino_ratio = mean_return / downside_std * np.sqrt(252) if downside_std > 0 else 0.0
     else:
         sortino_ratio = sharpe_ratio  # No downside, use Sharpe
 
@@ -73,39 +70,35 @@ def calculate_metrics(equity_df: pl.DataFrame, initial_capital: float) -> dict[s
         [((pl.col("equity") - pl.col("running_max")) / pl.col("running_max")).alias("drawdown")]
     )
 
-    max_drawdown = abs(equity_df["drawdown"].min())
+    max_dd_val = equity_df["drawdown"].min()
+    max_drawdown = float(abs(max_dd_val)) if max_dd_val is not None else 0.0  # type: ignore[arg-type]
 
     # Calmar ratio
-    if max_drawdown > 0:
-        calmar_ratio = cagr / max_drawdown
-    else:
-        calmar_ratio = 0.0
+    calmar_ratio = cagr / max_drawdown if max_drawdown > 0 else 0.0
 
     # Win rate and other stats
     num_positive = (returns > 0).sum()
     num_negative = (returns < 0).sum()
     total_trades = num_positive + num_negative
 
-    if total_trades > 0:
-        win_rate = num_positive / total_trades
-    else:
-        win_rate = 0.0
+    win_rate = num_positive / total_trades if total_trades > 0 else 0.0
 
     # Average win/loss
     positive_returns = returns.filter(returns > 0)
     negative_returns = returns.filter(returns < 0)
 
-    avg_win = positive_returns.mean() if len(positive_returns) > 0 else 0.0
-    avg_loss = abs(negative_returns.mean()) if len(negative_returns) > 0 else 0.0
+    avg_win_val = positive_returns.mean() if len(positive_returns) > 0 else 0.0
+    avg_loss_val = negative_returns.mean() if len(negative_returns) > 0 else 0.0
+    avg_win = float(avg_win_val) if avg_win_val is not None else 0.0  # type: ignore[arg-type]
+    avg_loss = float(abs(avg_loss_val)) if avg_loss_val is not None else 0.0  # type: ignore[arg-type]
 
     # Profit factor
-    total_wins = positive_returns.sum() if len(positive_returns) > 0 else 0.0
-    total_losses = abs(negative_returns.sum()) if len(negative_returns) > 0 else 0.0
+    total_wins_val = positive_returns.sum() if len(positive_returns) > 0 else 0.0
+    total_losses_val = negative_returns.sum() if len(negative_returns) > 0 else 0.0
+    total_wins = float(total_wins_val) if total_wins_val is not None else 0.0
+    total_losses = float(abs(total_losses_val)) if total_losses_val is not None else 0.0
 
-    if total_losses > 0:
-        profit_factor = total_wins / total_losses
-    else:
-        profit_factor = float("inf") if total_wins > 0 else 0.0
+    profit_factor = total_wins / total_losses if total_losses > 0 else float("inf") if total_wins > 0 else 0.0
 
     return {
         # Returns
@@ -151,8 +144,8 @@ def sharpe_ratio(equity_df: pl.DataFrame, risk_free_rate: float = 0.0) -> float:
     mean_excess = excess_returns.mean()
     std_excess = excess_returns.std()
 
-    if std_excess > 0:
-        return float(mean_excess / std_excess * np.sqrt(252))
+    if std_excess is not None and std_excess > 0:  # type: ignore[operator]
+        return float(mean_excess / std_excess * np.sqrt(252))  # type: ignore[operator]
     return 0.0
 
 
@@ -182,8 +175,8 @@ def sortino_ratio(equity_df: pl.DataFrame, risk_free_rate: float = 0.0, target_r
     mean_excess = excess_returns.mean()
     downside_std = downside_returns.std()
 
-    if downside_std > 0:
-        return float(mean_excess / downside_std * np.sqrt(252))
+    if downside_std is not None and downside_std > 0:  # type: ignore[operator]
+        return float(mean_excess / downside_std * np.sqrt(252))  # type: ignore[operator]
     return 0.0
 
 
@@ -200,7 +193,8 @@ def max_drawdown(equity_df: pl.DataFrame) -> float:
     equity = equity_df["equity"]
     running_max = equity.cum_max()
     drawdown = (equity - running_max) / running_max
-    return float(abs(drawdown.min()))
+    min_dd = drawdown.min()
+    return float(abs(min_dd)) if min_dd is not None else 0.0  # type: ignore[arg-type]
 
 
 def calmar_ratio(equity_df: pl.DataFrame, initial_capital: float) -> float:
@@ -314,7 +308,8 @@ def value_at_risk(equity_df: pl.DataFrame, confidence: float = 0.95) -> float:
     if len(returns) == 0:
         return 0.0
 
-    var = abs(float(returns.quantile(1 - confidence)))
+    quantile_val = returns.quantile(1 - confidence)
+    var = abs(float(quantile_val)) if quantile_val is not None else 0.0
     return var
 
 
@@ -338,5 +333,6 @@ def conditional_value_at_risk(equity_df: pl.DataFrame, confidence: float = 0.95)
     tail_losses = returns.filter(returns <= var_threshold)
 
     if len(tail_losses) > 0:
-        return abs(float(tail_losses.mean()))
+        mean_val = tail_losses.mean()
+        return abs(float(mean_val)) if mean_val is not None else 0.0  # type: ignore[arg-type]
     return 0.0

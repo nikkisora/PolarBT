@@ -36,7 +36,7 @@ class SimpleStrategy(Strategy):
             ctx.portfolio.close_position("asset")
 
 
-def create_sample_data(n_bars=252):
+def create_sample_data(n_bars: int = 252) -> pl.DataFrame:
     """Create sample price data with an upward trend."""
     import random
 
@@ -56,7 +56,7 @@ def create_sample_data(n_bars=252):
     )
 
 
-def main():
+def main() -> None:
     # Generate sample data
     data = create_sample_data(252)  # 1 year of daily data
 

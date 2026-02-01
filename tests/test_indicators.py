@@ -136,8 +136,8 @@ def test_crossover():
     df = df.with_columns([ind.crossover("fast", "slow").alias("cross")])
 
     # Crossover should occur at index 2 (fast goes from below to above slow)
-    assert df["cross"][2] == True
-    assert df["cross"][1] == False
+    assert df["cross"][2]
+    assert not df["cross"][1]
 
 
 def test_crossunder():
@@ -152,5 +152,5 @@ def test_crossunder():
     df = df.with_columns([ind.crossunder("fast", "slow").alias("cross")])
 
     # Crossunder should occur at index 2
-    assert df["cross"][2] == True
-    assert df["cross"][1] == False
+    assert df["cross"][2]
+    assert not df["cross"][1]

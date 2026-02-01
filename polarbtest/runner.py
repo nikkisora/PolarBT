@@ -122,7 +122,19 @@ def backtest(
         }
 
 
-def _run_backtest_worker(args: tuple) -> BacktestResult:
+def _run_backtest_worker(
+    args: tuple[
+        type[Strategy],
+        pl.DataFrame | dict[str, pl.DataFrame],
+        dict[str, Any],
+        float,
+        float | tuple[float, float],
+        float,
+        dict[str, str] | None,
+        int | str,
+        int,
+    ],
+) -> BacktestResult:
     """
     Worker function for parallel backtest execution.
 
@@ -246,12 +258,10 @@ def backtest_batch(
     with ProcessPoolExecutor(max_workers=n_jobs) as executor:
         futures = {executor.submit(_run_backtest_worker, args): i for i, args in enumerate(args_list)}
 
-        completed = 0
-        for future in as_completed(futures):
+        for completed, future in enumerate(as_completed(futures), 1):
             result = future.result()
             results.append(result)
 
-            completed += 1
             if verbose and completed % max(1, len(param_sets) // 10) == 0:
                 print(f"  Progress: {completed}/{len(param_sets)} ({100 * completed // len(param_sets)}%)")
 
@@ -324,7 +334,7 @@ def optimize(
     keys = list(param_grid.keys())
     values = list(param_grid.values())
 
-    param_sets = [dict(zip(keys, combo)) for combo in itertools.product(*values)]
+    param_sets = [dict(zip(keys, combo, strict=True)) for combo in itertools.product(*values)]
 
     if verbose:
         print(f"Testing {len(param_sets)} parameter combinations...")
@@ -403,7 +413,9 @@ def walk_forward_analysis(
             test_periods=63
         )
     """
-    total_periods = len(data)
+    # Get total periods based on data type
+    total_periods = len(next(iter(data.values()))) if isinstance(data, dict) else len(data)
+
     results = []
 
     start_idx = 0
@@ -412,10 +424,7 @@ def walk_forward_analysis(
     while start_idx + train_periods + test_periods <= total_periods:
         fold += 1
 
-        if anchored:
-            train_start = 0
-        else:
-            train_start = start_idx
+        train_start = 0 if anchored else start_idx
 
         train_end = start_idx + train_periods
         test_start = train_end
@@ -425,8 +434,14 @@ def walk_forward_analysis(
             print(f"\nFold {fold}: Train [{train_start}:{train_end}], Test [{test_start}:{test_end}]")
 
         # Split data
-        train_data = data[train_start:train_end]
-        test_data = data[test_start:test_end]
+        train_data: pl.DataFrame | dict[str, pl.DataFrame]
+        test_data: pl.DataFrame | dict[str, pl.DataFrame]
+        if isinstance(data, dict):
+            train_data = {asset: df[train_start:train_end] for asset, df in data.items()}
+            test_data = {asset: df[test_start:test_end] for asset, df in data.items()}
+        else:
+            train_data = data[train_start:train_end]
+            test_data = data[test_start:test_end]
 
         # Optimize on training data
         best_params = optimize(
