@@ -2,6 +2,7 @@
 
 import polars as pl
 import pytest
+
 from polarbtest import indicators as ind
 
 
@@ -66,9 +67,7 @@ def test_bollinger_bands(sample_data):
 
     # Upper should be greater than middle, middle greater than lower
     valid_rows = df.filter(
-        pl.col("bb_upper").is_not_null()
-        & pl.col("bb_middle").is_not_null()
-        & pl.col("bb_lower").is_not_null()
+        pl.col("bb_upper").is_not_null() & pl.col("bb_middle").is_not_null() & pl.col("bb_lower").is_not_null()
     )
 
     for row in valid_rows.iter_rows(named=True):
@@ -98,11 +97,7 @@ def test_macd(sample_data):
     )
 
     # Histogram should be macd - signal
-    valid_rows = df.filter(
-        pl.col("macd").is_not_null()
-        & pl.col("signal").is_not_null()
-        & pl.col("hist").is_not_null()
-    )
+    valid_rows = df.filter(pl.col("macd").is_not_null() & pl.col("signal").is_not_null() & pl.col("hist").is_not_null())
 
     assert len(valid_rows) > 0
 

@@ -2,8 +2,9 @@
 
 import polars as pl
 import pytest
-from polarbtest.core import Portfolio, Strategy, Engine, BacktestContext
+
 from polarbtest import indicators as ind
+from polarbtest.core import BacktestContext, Engine, Portfolio, Strategy
 
 
 @pytest.fixture
@@ -42,9 +43,7 @@ class TestPortfolio:
 
         # Check cash decreased (price + commission + slippage)
         assert portfolio.cash < 100_000
-        assert (
-            portfolio.cash > 100_000 - 50_000
-        )  # Less than full amount due to fractional buy
+        assert portfolio.cash > 100_000 - 50_000  # Less than full amount due to fractional buy
 
     def test_order_sell(self):
         """Test selling assets."""
@@ -134,9 +133,7 @@ class TestPortfolio:
     def test_mixed_commission(self):
         """Test mixed fixed + percentage commission."""
         # $5 fixed + 0.1% per trade
-        portfolio = Portfolio(
-            initial_cash=100_000, commission=(5.0, 0.001), slippage=0.0
-        )
+        portfolio = Portfolio(initial_cash=100_000, commission=(5.0, 0.001), slippage=0.0)
         portfolio.update_prices({"BTC": 50_000})
 
         # Buy 1 BTC
@@ -195,9 +192,7 @@ class TestPortfolio:
 
     def test_order_target_percent_with_mixed_commission(self):
         """Test order_target_percent with mixed commission."""
-        portfolio = Portfolio(
-            initial_cash=100_000, commission=(5.0, 0.001), slippage=0.0
-        )
+        portfolio = Portfolio(initial_cash=100_000, commission=(5.0, 0.001), slippage=0.0)
         portfolio.update_prices({"BTC": 50_000})
 
         # Allocate 50% to BTC
@@ -215,9 +210,7 @@ class SimpleStrategy(Strategy):
     """Simple test strategy."""
 
     def preprocess(self, df: pl.DataFrame) -> pl.DataFrame:
-        return df.with_columns(
-            [ind.sma("close", self.params.get("sma_period", 10)).alias("sma")]
-        )
+        return df.with_columns([ind.sma("close", self.params.get("sma_period", 10)).alias("sma")])
 
     def next(self, ctx: BacktestContext) -> None:
         # Simple strategy: buy when above SMA, sell when below
@@ -289,15 +282,11 @@ class TestEngine:
                 ctx.portfolio.order_target_percent("ETH", 0.5)
 
         strategy = MultiAssetStrategy()
-        engine = Engine(
-            strategy, data, price_columns={"BTC": "btc_close", "ETH": "eth_close"}
-        )
+        engine = Engine(strategy, data, price_columns={"BTC": "btc_close", "ETH": "eth_close"})
         results = engine.run()
 
         assert results is not None
-        assert (
-            "BTC" in results["final_positions"] or "ETH" in results["final_positions"]
-        )
+        assert "BTC" in results["final_positions"] or "ETH" in results["final_positions"]
 
 
 class TestBacktestContext:

@@ -2,12 +2,13 @@
 Simple example demonstrating PolarBtest usage.
 """
 
-import polars as pl
-from polarbtest import Strategy, backtest, indicators as ind
-
-
 # Create sample data with clear trend
 import math
+
+import polars as pl
+
+from polarbtest import Strategy, backtest
+from polarbtest import indicators as ind
 
 data = pl.DataFrame(
     {

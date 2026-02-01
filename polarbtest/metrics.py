@@ -4,14 +4,13 @@ Performance metrics for backtesting results.
 All metrics are calculated using vectorized Polars operations for maximum performance.
 """
 
-import polars as pl
+from typing import Any
+
 import numpy as np
-from typing import Dict, Any, Optional
+import polars as pl
 
 
-def calculate_metrics(
-    equity_df: pl.DataFrame, initial_capital: float
-) -> Dict[str, Any]:
+def calculate_metrics(equity_df: pl.DataFrame, initial_capital: float) -> dict[str, Any]:
     """
     Calculate comprehensive performance metrics from an equity curve.
 
@@ -33,9 +32,7 @@ def calculate_metrics(
         }
 
     # Calculate returns
-    equity_df = equity_df.with_columns(
-        [(pl.col("equity") / pl.col("equity").shift(1) - 1).alias("returns")]
-    )
+    equity_df = equity_df.with_columns([(pl.col("equity") / pl.col("equity").shift(1) - 1).alias("returns")])
 
     final_equity = equity_df["equity"][-1]
     total_return = (final_equity - initial_capital) / initial_capital
@@ -71,15 +68,9 @@ def calculate_metrics(
         sortino_ratio = sharpe_ratio  # No downside, use Sharpe
 
     # Maximum drawdown
+    equity_df = equity_df.with_columns([pl.col("equity").cum_max().alias("running_max")])
     equity_df = equity_df.with_columns(
-        [pl.col("equity").cum_max().alias("running_max")]
-    )
-    equity_df = equity_df.with_columns(
-        [
-            ((pl.col("equity") - pl.col("running_max")) / pl.col("running_max")).alias(
-                "drawdown"
-            )
-        ]
+        [((pl.col("equity") - pl.col("running_max")) / pl.col("running_max")).alias("drawdown")]
     )
 
     max_drawdown = abs(equity_df["drawdown"].min())
@@ -127,17 +118,13 @@ def calculate_metrics(
         "calmar_ratio": float(calmar_ratio),
         # Volatility
         "volatility": float(std_return) if len(returns) > 0 else 0.0,
-        "volatility_annualized": float(std_return * np.sqrt(252))
-        if len(returns) > 0
-        else 0.0,
+        "volatility_annualized": float(std_return * np.sqrt(252)) if len(returns) > 0 else 0.0,
         # Trade statistics
         "num_periods": int(num_periods),
         "win_rate": float(win_rate),
         "avg_win": float(avg_win),
         "avg_loss": float(avg_loss),
-        "profit_factor": float(profit_factor)
-        if profit_factor != float("inf")
-        else 999.0,
+        "profit_factor": float(profit_factor) if profit_factor != float("inf") else 999.0,
         # Equity curve stats
         "initial_equity": float(initial_capital),
         "final_equity": float(final_equity),
@@ -169,9 +156,7 @@ def sharpe_ratio(equity_df: pl.DataFrame, risk_free_rate: float = 0.0) -> float:
     return 0.0
 
 
-def sortino_ratio(
-    equity_df: pl.DataFrame, risk_free_rate: float = 0.0, target_return: float = 0.0
-) -> float:
+def sortino_ratio(equity_df: pl.DataFrame, risk_free_rate: float = 0.0, target_return: float = 0.0) -> float:
     """
     Calculate annualized Sortino ratio.
 
@@ -308,13 +293,7 @@ def underwater_plot_data(equity_df: pl.DataFrame) -> pl.DataFrame:
     """
     df = equity_df.with_columns([pl.col("equity").cum_max().alias("running_max")])
 
-    df = df.with_columns(
-        [
-            ((pl.col("equity") - pl.col("running_max")) / pl.col("running_max")).alias(
-                "drawdown"
-            )
-        ]
-    )
+    df = df.with_columns([((pl.col("equity") - pl.col("running_max")) / pl.col("running_max")).alias("drawdown")])
 
     return df.select(["timestamp", "drawdown"])
 
@@ -339,9 +318,7 @@ def value_at_risk(equity_df: pl.DataFrame, confidence: float = 0.95) -> float:
     return var
 
 
-def conditional_value_at_risk(
-    equity_df: pl.DataFrame, confidence: float = 0.95
-) -> float:
+def conditional_value_at_risk(equity_df: pl.DataFrame, confidence: float = 0.95) -> float:
     """
     Calculate Conditional Value at Risk (CVaR) / Expected Shortfall.
 

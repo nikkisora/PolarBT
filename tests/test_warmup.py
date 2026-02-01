@@ -2,8 +2,10 @@
 
 import polars as pl
 import pytest
-from polarbtest.core import Engine, Strategy, BacktestContext
-from polarbtest import backtest, indicators as ind
+
+from polarbtest import backtest
+from polarbtest import indicators as ind
+from polarbtest.core import Engine, Strategy
 
 
 @pytest.fixture
@@ -263,9 +265,7 @@ class TestWarmupWithBacktest:
 
     def test_backtest_manual_warmup(self, sample_data):
         """Test backtest with manual warmup."""
-        results = backtest(
-            TrackingStrategy, sample_data, params={"period": 20}, warmup=15
-        )
+        results = backtest(TrackingStrategy, sample_data, params={"period": 20}, warmup=15)
         assert results["success"]
 
     def test_backtest_invalid_warmup(self, sample_data):

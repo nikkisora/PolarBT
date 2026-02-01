@@ -8,16 +8,17 @@ This module provides the fundamental building blocks for backtesting:
 - BacktestContext: Data container passed to strategy.next()
 """
 
-import polars as pl
-from typing import Dict, Optional, Any, List, Union
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
 from collections import defaultdict
+from dataclasses import dataclass
+from typing import Any
+
+import polars as pl
 
 
 def standardize_dataframe(
     df: pl.DataFrame,
-    timestamp_col: Optional[str] = None,
+    timestamp_col: str | None = None,
     auto_detect: bool = True,
 ) -> pl.DataFrame:
     """
@@ -60,9 +61,9 @@ def standardize_dataframe(
 
 
 def merge_asset_dataframes(
-    data_dict: Dict[str, pl.DataFrame],
+    data_dict: dict[str, pl.DataFrame],
     price_column: str = "close",
-) -> tuple[pl.DataFrame, Dict[str, str]]:
+) -> tuple[pl.DataFrame, dict[str, str]]:
     """
     Merge multiple asset dataframes into a single wide-format dataframe.
 
@@ -93,9 +94,7 @@ def merge_asset_dataframes(
     # Start with the first dataframe's timestamp
     first_asset = list(standardized.keys())[0]
     merged = (
-        standardized[first_asset].select(["timestamp"])
-        if "timestamp" in standardized[first_asset].columns
-        else None
+        standardized[first_asset].select(["timestamp"]) if "timestamp" in standardized[first_asset].columns else None
     )
 
     # Build price columns mapping
@@ -109,17 +108,13 @@ def merge_asset_dataframes(
 
         # Select timestamp and price columns
         if "timestamp" in df.columns:
-            df_subset = df.select(["timestamp", price_column]).rename(
-                {price_column: new_col_name}
-            )
+            df_subset = df.select(["timestamp", price_column]).rename({price_column: new_col_name})
 
             if merged is None:
                 merged = df_subset
             else:
                 # Join on timestamp using coalesce to avoid duplicate timestamp columns
-                merged = merged.join(
-                    df_subset, on="timestamp", how="outer", coalesce=True
-                )
+                merged = merged.join(df_subset, on="timestamp", how="outer", coalesce=True)
         else:
             # No timestamp - add index and merge
             df_subset = df.select([price_column]).rename({price_column: new_col_name})
@@ -150,7 +145,7 @@ class BacktestContext:
     """
 
     timestamp: Any
-    row: Dict[str, Any]
+    row: dict[str, Any]
     portfolio: "Portfolio"
     bar_index: int
 
@@ -169,9 +164,7 @@ class Portfolio:
     def __init__(
         self,
         initial_cash: float = 100_000.0,
-        commission: Union[
-            float, tuple[float, float]
-        ] = 0.0,
+        commission: float | tuple[float, float] = 0.0,
         slippage: float = 0.0,
         order_delay: int = 0,
     ):
@@ -200,20 +193,20 @@ class Portfolio:
         self.order_delay = order_delay
 
         # Asset positions: {asset_name: quantity}
-        self.positions: Dict[str, float] = defaultdict(float)
+        self.positions: dict[str, float] = defaultdict(float)
 
         # History tracking for metrics calculation
-        self.equity_curve: List[float] = []
-        self.timestamps: List[Any] = []
+        self.equity_curve: list[float] = []
+        self.timestamps: list[Any] = []
 
         # Current prices for portfolio valuation
-        self._current_prices: Dict[str, float] = {}
+        self._current_prices: dict[str, float] = {}
 
         # Pending orders queue: List of (bar_to_execute, asset, quantity, limit_price)
-        self._pending_orders: List[tuple[int, str, float, Optional[float]]] = []
+        self._pending_orders: list[tuple[int, str, float, float | None]] = []
         self._current_bar: int = 0
 
-    def update_prices(self, prices: Dict[str, float], bar_index: int = 0):
+    def update_prices(self, prices: dict[str, float], bar_index: int = 0):
         """
         Update current market prices for all assets and execute pending orders.
 
@@ -232,10 +225,7 @@ class Portfolio:
         Returns:
             Total portfolio value
         """
-        positions_value = sum(
-            qty * self._current_prices.get(asset, 0.0)
-            for asset, qty in self.positions.items()
-        )
+        positions_value = sum(qty * self._current_prices.get(asset, 0.0) for asset, qty in self.positions.items())
         return self.cash + positions_value
 
     def get_position(self, asset: str) -> float:
@@ -257,23 +247,17 @@ class Portfolio:
 
         # Filter orders that should execute this bar
         orders_to_execute = [
-            (asset, qty, price)
-            for (bar, asset, qty, price) in self._pending_orders
-            if bar <= self._current_bar
+            (asset, qty, price) for (bar, asset, qty, price) in self._pending_orders if bar <= self._current_bar
         ]
 
         # Remove executed orders from pending
-        self._pending_orders = [
-            order for order in self._pending_orders if order[0] > self._current_bar
-        ]
+        self._pending_orders = [order for order in self._pending_orders if order[0] > self._current_bar]
 
         # Execute the orders
         for asset, quantity, limit_price in orders_to_execute:
             self._execute_order_immediate(asset, quantity, limit_price)
 
-    def _execute_order_immediate(
-        self, asset: str, quantity: float, limit_price: Optional[float] = None
-    ) -> bool:
+    def _execute_order_immediate(self, asset: str, quantity: float, limit_price: float | None = None) -> bool:
         """
         Execute an order immediately at current prices.
 
@@ -289,9 +273,7 @@ class Portfolio:
             return False
 
         # Use limit price or current market price
-        price = (
-            limit_price if limit_price is not None else self._current_prices.get(asset)
-        )
+        price = limit_price if limit_price is not None else self._current_prices.get(asset)
 
         if price is None or price <= 0:
             return False
@@ -325,9 +307,7 @@ class Portfolio:
 
         return True
 
-    def order(
-        self, asset: str, quantity: float, limit_price: Optional[float] = None
-    ) -> bool:
+    def order(self, asset: str, quantity: float, limit_price: float | None = None) -> bool:
         """
         Place an order for an asset.
 
@@ -351,9 +331,7 @@ class Portfolio:
         self._pending_orders.append((execute_at_bar, asset, quantity, limit_price))
         return True
 
-    def order_target(
-        self, asset: str, target_quantity: float, limit_price: Optional[float] = None
-    ) -> bool:
+    def order_target(self, asset: str, target_quantity: float, limit_price: float | None = None) -> bool:
         """
         Order to reach a target position size.
 
@@ -369,9 +347,7 @@ class Portfolio:
         delta = target_quantity - current_position
         return self.order(asset, delta, limit_price)
 
-    def order_target_value(
-        self, asset: str, target_value: float, limit_price: Optional[float] = None
-    ) -> bool:
+    def order_target_value(self, asset: str, target_value: float, limit_price: float | None = None) -> bool:
         """
         Order to reach a target position value.
 
@@ -383,18 +359,14 @@ class Portfolio:
         Returns:
             True if order was executed, False otherwise
         """
-        price = (
-            limit_price if limit_price is not None else self._current_prices.get(asset)
-        )
+        price = limit_price if limit_price is not None else self._current_prices.get(asset)
         if price is None or price <= 0:
             return False
 
         target_quantity = target_value / price
         return self.order_target(asset, target_quantity, limit_price)
 
-    def order_target_percent(
-        self, asset: str, target_percent: float, limit_price: Optional[float] = None
-    ) -> bool:
+    def order_target_percent(self, asset: str, target_percent: float, limit_price: float | None = None) -> bool:
         """
         Order to reach a target percentage of portfolio value.
 
@@ -406,9 +378,7 @@ class Portfolio:
         Returns:
             True if order was executed, False otherwise
         """
-        price = (
-            limit_price if limit_price is not None else self._current_prices.get(asset)
-        )
+        price = limit_price if limit_price is not None else self._current_prices.get(asset)
         if price is None or price <= 0:
             return False
 
@@ -434,9 +404,7 @@ class Portfolio:
             # Solving: quantity = (value_delta - fixed_commission) / (execution_price * (1 + percent_commission))
             execution_price = price * (1 + self.slippage)
             cost_multiplier = 1 + self.commission_percent
-            quantity_to_buy = (value_delta - self.commission_fixed) / (
-                execution_price * cost_multiplier
-            )
+            quantity_to_buy = (value_delta - self.commission_fixed) / (execution_price * cost_multiplier)
             target_quantity = current_position + quantity_to_buy
         else:  # Selling
             # For selling: net_proceeds = quantity * execution_price * (1 - percent_commission) - fixed_commission
@@ -444,14 +412,12 @@ class Portfolio:
             # Solving: quantity = (abs(value_delta) + fixed_commission) / (execution_price * (1 - percent_commission))
             execution_price = price * (1 - self.slippage)
             proceeds_multiplier = 1 - self.commission_percent
-            quantity_to_sell = (abs(value_delta) + self.commission_fixed) / (
-                execution_price * proceeds_multiplier
-            )
+            quantity_to_sell = (abs(value_delta) + self.commission_fixed) / (execution_price * proceeds_multiplier)
             target_quantity = current_position - quantity_to_sell
 
         return self.order_target(asset, target_quantity, limit_price)
 
-    def close_position(self, asset: str, limit_price: Optional[float] = None) -> bool:
+    def close_position(self, asset: str, limit_price: float | None = None) -> bool:
         """
         Close entire position in an asset.
 
@@ -581,12 +547,12 @@ class Engine:
     def __init__(
         self,
         strategy: Strategy,
-        data: Union[pl.DataFrame, Dict[str, pl.DataFrame]],
+        data: pl.DataFrame | dict[str, pl.DataFrame],
         initial_cash: float = 100_000.0,
-        commission: Union[float, tuple[float, float]] = 0.0,
+        commission: float | tuple[float, float] = 0.0,
         slippage: float = 0.0,
-        price_columns: Optional[Dict[str, str]] = None,
-        warmup: Union[int, str] = "auto",
+        price_columns: dict[str, str] | None = None,
+        warmup: int | str = "auto",
         order_delay: int = 0,
     ):
         """
@@ -643,8 +609,7 @@ class Engine:
                     numeric_cols = [
                         c
                         for c in self.data.columns
-                        if self.data[c].dtype
-                        in [pl.Float64, pl.Float32, pl.Int64, pl.Int32]
+                        if self.data[c].dtype in [pl.Float64, pl.Float32, pl.Int64, pl.Int32]
                     ]
                     if numeric_cols:
                         self.price_columns = {"asset": numeric_cols[0]}
@@ -653,8 +618,8 @@ class Engine:
             else:
                 self.price_columns = price_columns
 
-        self.portfolio: Optional[Portfolio] = None
-        self.results: Optional[Dict[str, Any]] = None
+        self.portfolio: Portfolio | None = None
+        self.results: dict[str, Any] | None = None
 
     def _calculate_auto_warmup(self, df: pl.DataFrame) -> int:
         """
@@ -683,9 +648,7 @@ class Engine:
         # Find the first row where all columns are non-null
         # Create a boolean column that is True when all cols_to_check are non-null
         all_non_null = df.select(
-            pl.all_horizontal(
-                [pl.col(col).is_not_null() for col in cols_to_check]
-            ).alias("all_valid")
+            pl.all_horizontal([pl.col(col).is_not_null() for col in cols_to_check]).alias("all_valid")
         )
 
         # Find the index of the first True value
@@ -696,7 +659,7 @@ class Engine:
         # If no row has all non-null values, return length - 1 (skip all but last)
         return max(0, len(df) - 1)
 
-    def run(self) -> Dict[str, Any]:
+    def run(self) -> dict[str, Any]:
         """
         Run the backtest simulation.
 
@@ -740,10 +703,7 @@ class Engine:
         # Main event loop - iterate through bars
         for idx, row_dict in enumerate(processed_data.iter_rows(named=True)):
             # Extract current prices for all assets
-            current_prices = {
-                asset: row_dict.get(price_col)
-                for asset, price_col in self.price_columns.items()
-            }
+            current_prices = {asset: row_dict.get(price_col) for asset, price_col in self.price_columns.items()}
 
             # Update portfolio with current prices
             self.portfolio.update_prices(current_prices, idx)
@@ -770,7 +730,7 @@ class Engine:
         self.results = self._calculate_results()
         return self.results
 
-    def _calculate_results(self) -> Dict[str, Any]:
+    def _calculate_results(self) -> dict[str, Any]:
         """
         Calculate backtest metrics.
 

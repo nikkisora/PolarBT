@@ -7,8 +7,9 @@ Example demonstrating multi-asset strategy with features:
 """
 
 import polars as pl
-from polarbtest import Strategy, backtest, indicators as ind
 
+from polarbtest import Strategy, backtest
+from polarbtest import indicators as ind
 
 # Create sample data for multiple assets
 btc_data = pl.DataFrame(
@@ -77,7 +78,7 @@ if __name__ == "__main__":
         print(f"  Max Drawdown:     {results.get('max_drawdown', 0):.2%}")
         print(f"  Final Equity:     ${results.get('final_equity', 0):,.2f}")
         print(f"  Win Rate:         {results.get('win_rate', 0):.2%}")
-        print(f"\n  Final Positions:")
+        print("\n  Final Positions:")
         for asset, qty in results.get("final_positions", {}).items():
             print(f"    {asset}: {qty:.6f}")
     else:

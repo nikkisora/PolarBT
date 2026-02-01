@@ -5,7 +5,6 @@ All functions return Polars expressions that can be used in .with_columns() call
 """
 
 import polars as pl
-from typing import Union
 
 
 def sma(column: str, period: int) -> pl.Expr:
@@ -47,9 +46,7 @@ def ema(column: str, period: int, adjust: bool = False) -> pl.Expr:
     alpha = 2.0 / (period + 1)
     # Make first value null to match SMA behavior
     return (
-        pl.when(pl.int_range(pl.len()) == 0)
-        .then(None)
-        .otherwise(pl.col(column).ewm_mean(alpha=alpha, adjust=adjust))
+        pl.when(pl.int_range(pl.len()) == 0).then(None).otherwise(pl.col(column).ewm_mean(alpha=alpha, adjust=adjust))
     )
 
 
@@ -87,9 +84,7 @@ def rsi(column: str, period: int = 14) -> pl.Expr:
     return rsi_value
 
 
-def bollinger_bands(
-    column: str, period: int = 20, std_dev: float = 2.0
-) -> tuple[pl.Expr, pl.Expr, pl.Expr]:
+def bollinger_bands(column: str, period: int = 20, std_dev: float = 2.0) -> tuple[pl.Expr, pl.Expr, pl.Expr]:
     """
     Bollinger Bands.
 
@@ -117,9 +112,7 @@ def bollinger_bands(
     return upper, middle, lower
 
 
-def atr(
-    high: str = "high", low: str = "low", close: str = "close", period: int = 14
-) -> pl.Expr:
+def atr(high: str = "high", low: str = "low", close: str = "close", period: int = 14) -> pl.Expr:
     """
     Average True Range.
 
@@ -156,9 +149,7 @@ def atr(
     return atr_value
 
 
-def macd(
-    column: str, fast: int = 12, slow: int = 26, signal: int = 9
-) -> tuple[pl.Expr, pl.Expr, pl.Expr]:
+def macd(column: str, fast: int = 12, slow: int = 26, signal: int = 9) -> tuple[pl.Expr, pl.Expr, pl.Expr]:
     """
     Moving Average Convergence Divergence.
 

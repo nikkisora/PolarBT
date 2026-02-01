@@ -2,9 +2,10 @@
 
 import polars as pl
 import pytest
+
+from polarbtest import indicators as ind
 from polarbtest.core import Strategy
 from polarbtest.runner import backtest, backtest_batch, optimize
-from polarbtest import indicators as ind
 
 
 @pytest.fixture
@@ -43,9 +44,7 @@ class TestBacktest:
 
     def test_backtest_basic(self, sample_data):
         """Test basic backtest execution."""
-        results = backtest(
-            SampleStrategy, sample_data, params={"sma_period": 10}, initial_cash=100_000
-        )
+        results = backtest(SampleStrategy, sample_data, params={"sma_period": 10}, initial_cash=100_000)
 
         assert results is not None
         assert "sharpe_ratio" in results
@@ -60,8 +59,7 @@ class TestBacktest:
 
         # Results should be different
         assert (
-            results1["sharpe_ratio"] != results2["sharpe_ratio"]
-            or results1["total_return"] != results2["total_return"]
+            results1["sharpe_ratio"] != results2["sharpe_ratio"] or results1["total_return"] != results2["total_return"]
         )
 
     def test_backtest_no_params(self, sample_data):
@@ -82,9 +80,7 @@ class TestBatchBacktest:
             {"sma_period": 20},
         ]
 
-        results_df = backtest_batch(
-            SampleStrategy, sample_data, param_sets, n_jobs=2, verbose=False
-        )
+        results_df = backtest_batch(SampleStrategy, sample_data, param_sets, n_jobs=2, verbose=False)
 
         assert len(results_df) == 3
         assert "sharpe_ratio" in results_df.columns
@@ -94,9 +90,7 @@ class TestBatchBacktest:
         """Test batch with many parameter sets."""
         param_sets = [{"sma_period": i} for i in range(5, 25)]
 
-        results_df = backtest_batch(
-            SampleStrategy, sample_data, param_sets, n_jobs=2, verbose=False
-        )
+        results_df = backtest_batch(SampleStrategy, sample_data, param_sets, n_jobs=2, verbose=False)
 
         assert len(results_df) == len(param_sets)
 

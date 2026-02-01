@@ -5,13 +5,14 @@ This module provides high-level functions for running backtests,
 optimized for evolutionary search and parameter optimization.
 """
 
-import polars as pl
-from typing import Dict, Any, List, Type, Optional, Callable, Union
-from concurrent.futures import ProcessPoolExecutor, as_completed
 import multiprocessing as mp
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
+from typing import Any
 
-from polarbtest.core import Strategy, Engine
+import polars as pl
+
+from polarbtest.core import Engine, Strategy
 
 
 @dataclass
@@ -26,23 +27,23 @@ class BacktestResult:
         error: Error message if backtest failed
     """
 
-    params: Dict[str, Any]
-    metrics: Dict[str, Any]
+    params: dict[str, Any]
+    metrics: dict[str, Any]
     success: bool = True
-    error: Optional[str] = None
+    error: str | None = None
 
 
 def backtest(
-    strategy_class: Type[Strategy],
-    data: Union[pl.DataFrame, Dict[str, pl.DataFrame]],
-    params: Optional[Dict[str, Any]] = None,
+    strategy_class: type[Strategy],
+    data: pl.DataFrame | dict[str, pl.DataFrame],
+    params: dict[str, Any] | None = None,
     initial_cash: float = 100_000.0,
-    commission: Union[float, tuple[float, float]] = 0.001,
+    commission: float | tuple[float, float] = 0.001,
     slippage: float = 0.0005,
-    price_columns: Optional[Dict[str, str]] = None,
-    warmup: Union[int, str] = "auto",
+    price_columns: dict[str, str] | None = None,
+    warmup: int | str = "auto",
     order_delay: int = 0,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Run a single backtest.
 
@@ -172,16 +173,16 @@ def _run_backtest_worker(args: tuple) -> BacktestResult:
 
 
 def backtest_batch(
-    strategy_class: Type[Strategy],
-    data: Union[pl.DataFrame, Dict[str, pl.DataFrame]],
-    param_sets: List[Dict[str, Any]],
+    strategy_class: type[Strategy],
+    data: pl.DataFrame | dict[str, pl.DataFrame],
+    param_sets: list[dict[str, Any]],
     initial_cash: float = 100_000.0,
-    commission: Union[float, tuple[float, float]] = 0.001,
+    commission: float | tuple[float, float] = 0.001,
     slippage: float = 0.0005,
-    price_columns: Optional[Dict[str, str]] = None,
-    warmup: Union[int, str] = "auto",
+    price_columns: dict[str, str] | None = None,
+    warmup: int | str = "auto",
     order_delay: int = 0,
-    n_jobs: Optional[int] = None,
+    n_jobs: int | None = None,
     verbose: bool = True,
 ) -> pl.DataFrame:
     """
@@ -243,10 +244,7 @@ def backtest_batch(
 
     # Run backtests in parallel
     with ProcessPoolExecutor(max_workers=n_jobs) as executor:
-        futures = {
-            executor.submit(_run_backtest_worker, args): i
-            for i, args in enumerate(args_list)
-        }
+        futures = {executor.submit(_run_backtest_worker, args): i for i, args in enumerate(args_list)}
 
         completed = 0
         for future in as_completed(futures):
@@ -255,9 +253,7 @@ def backtest_batch(
 
             completed += 1
             if verbose and completed % max(1, len(param_sets) // 10) == 0:
-                print(
-                    f"  Progress: {completed}/{len(param_sets)} ({100 * completed // len(param_sets)}%)"
-                )
+                print(f"  Progress: {completed}/{len(param_sets)} ({100 * completed // len(param_sets)}%)")
 
     if verbose:
         print(f"Completed {len(results)} backtests")
@@ -277,20 +273,20 @@ def backtest_batch(
 
 
 def optimize(
-    strategy_class: Type[Strategy],
-    data: Union[pl.DataFrame, Dict[str, pl.DataFrame]],
-    param_grid: Dict[str, List[Any]],
+    strategy_class: type[Strategy],
+    data: pl.DataFrame | dict[str, pl.DataFrame],
+    param_grid: dict[str, list[Any]],
     objective: str = "sharpe_ratio",
     maximize: bool = True,
     initial_cash: float = 100_000.0,
-    commission: Union[float, tuple[float, float]] = 0.001,
+    commission: float | tuple[float, float] = 0.001,
     slippage: float = 0.0005,
-    price_columns: Optional[Dict[str, str]] = None,
-    warmup: Union[int, str] = "auto",
+    price_columns: dict[str, str] | None = None,
+    warmup: int | str = "auto",
     order_delay: int = 0,
-    n_jobs: Optional[int] = None,
+    n_jobs: int | None = None,
     verbose: bool = True,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Grid search optimization for strategy parameters.
 
@@ -358,18 +354,18 @@ def optimize(
 
 
 def walk_forward_analysis(
-    strategy_class: Type[Strategy],
-    data: Union[pl.DataFrame, Dict[str, pl.DataFrame]],
-    param_grid: Dict[str, List[Any]],
+    strategy_class: type[Strategy],
+    data: pl.DataFrame | dict[str, pl.DataFrame],
+    param_grid: dict[str, list[Any]],
     train_periods: int,
     test_periods: int,
     objective: str = "sharpe_ratio",
     maximize: bool = True,
     initial_cash: float = 100_000.0,
-    commission: Union[float, tuple[float, float]] = 0.001,
+    commission: float | tuple[float, float] = 0.001,
     slippage: float = 0.0005,
-    price_columns: Optional[Dict[str, str]] = None,
-    warmup: Union[int, str] = "auto",
+    price_columns: dict[str, str] | None = None,
+    warmup: int | str = "auto",
     order_delay: int = 0,
     anchored: bool = False,
     verbose: bool = True,
@@ -426,9 +422,7 @@ def walk_forward_analysis(
         test_end = test_start + test_periods
 
         if verbose:
-            print(
-                f"\nFold {fold}: Train [{train_start}:{train_end}], Test [{test_start}:{test_end}]"
-            )
+            print(f"\nFold {fold}: Train [{train_start}:{train_end}], Test [{test_start}:{test_end}]")
 
         # Split data
         train_data = data[train_start:train_end]
@@ -473,11 +467,7 @@ def walk_forward_analysis(
                 "best_params": best_params["params"],
                 "train_objective": best_params.get(objective, 0.0),
                 "test_objective": test_result.get(objective, 0.0),
-                **{
-                    f"test_{k}": v
-                    for k, v in test_result.items()
-                    if k not in ["params", "final_positions"]
-                },
+                **{f"test_{k}": v for k, v in test_result.items() if k not in ["params", "final_positions"]},
             }
         )
 

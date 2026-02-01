@@ -8,9 +8,10 @@ This script shows how to use:
 """
 
 import polars as pl
-from polarbtest.core import Strategy, BacktestContext
-from polarbtest.runner import backtest
+
 from polarbtest import indicators as ind
+from polarbtest.core import BacktestContext, Strategy
+from polarbtest.runner import backtest
 
 
 class SimpleStrategy(Strategy):
@@ -130,31 +131,17 @@ def main():
     print("=" * 80)
     print(f"{'Commission Model':<30} {'Final Equity':<15} {'Total Return':<15}")
     print("-" * 80)
-    print(
-        f"{'Commission-Free':<30} ${results4['final_equity']:>13,.2f} {results4['total_return']:>13.2%}"
-    )
-    print(
-        f"{'0.1% Percentage':<30} ${results1['final_equity']:>13,.2f} {results1['total_return']:>13.2%}"
-    )
-    print(
-        f"{'$5 Fixed':<30} ${results2['final_equity']:>13,.2f} {results2['total_return']:>13.2%}"
-    )
-    print(
-        f"{'$5 + 0.1% Mixed':<30} ${results3['final_equity']:>13,.2f} {results3['total_return']:>13.2%}"
-    )
+    print(f"{'Commission-Free':<30} ${results4['final_equity']:>13,.2f} {results4['total_return']:>13.2%}")
+    print(f"{'0.1% Percentage':<30} ${results1['final_equity']:>13,.2f} {results1['total_return']:>13.2%}")
+    print(f"{'$5 Fixed':<30} ${results2['final_equity']:>13,.2f} {results2['total_return']:>13.2%}")
+    print(f"{'$5 + 0.1% Mixed':<30} ${results3['final_equity']:>13,.2f} {results3['total_return']:>13.2%}")
     print()
 
     # Calculate commission impact
     print("Commission Impact (compared to commission-free):")
-    print(
-        f"  0.1% Percentage: {(results1['total_return'] - results4['total_return']):.2%}"
-    )
-    print(
-        f"  $5 Fixed:        {(results2['total_return'] - results4['total_return']):.2%}"
-    )
-    print(
-        f"  $5 + 0.1% Mixed: {(results3['total_return'] - results4['total_return']):.2%}"
-    )
+    print(f"  0.1% Percentage: {(results1['total_return'] - results4['total_return']):.2%}")
+    print(f"  $5 Fixed:        {(results2['total_return'] - results4['total_return']):.2%}")
+    print(f"  $5 + 0.1% Mixed: {(results3['total_return'] - results4['total_return']):.2%}")
     print()
 
 
