@@ -128,7 +128,6 @@ def merge_asset_dataframes(
             else:
                 merged = pl.concat([merged, df_subset], how="horizontal")
 
-    # Sort by timestamp if it exists
     if merged is not None and "timestamp" in merged.columns:
         merged = merged.sort("timestamp")
 
@@ -170,22 +169,33 @@ class Portfolio:
     def __init__(
         self,
         initial_cash: float = 100_000.0,
-        commission: float = 0.001,  # 0.1% per trade
-        slippage: float = 0.0005,  # 0.05% slippage
-        order_delay: int = 0,  # Number of bars to delay order execution
+        commission: Union[
+            float, tuple[float, float]
+        ] = 0.0,
+        slippage: float = 0.0,
+        order_delay: int = 0,
     ):
         """
         Initialize a new portfolio.
 
         Args:
             initial_cash: Starting cash balance
-            commission: Commission rate as a fraction (e.g., 0.001 = 0.1%)
+            commission: Commission as a percentage (e.g., 0.001 = 0.1%) or tuple of (fixed_commission, percent_commission)
+                       For example: 0.001 means 0.1% per trade, (5.0, 0.001) means $5 + 0.1% per trade
             slippage: Slippage rate as a fraction (e.g., 0.0005 = 0.05%)
             order_delay: Number of bars to delay order execution (0 = immediate, 1 = next bar)
         """
         self.initial_cash = initial_cash
         self.cash = initial_cash
-        self.commission = commission
+
+        # Parse commission format
+        if isinstance(commission, tuple):
+            self.commission_fixed = commission[0]
+            self.commission_percent = commission[1]
+        else:
+            self.commission_fixed = 0.0
+            self.commission_percent = commission
+
         self.slippage = slippage
         self.order_delay = order_delay
 
@@ -294,7 +304,7 @@ class Portfolio:
 
         # Calculate total cost including commission
         gross_cost = abs(quantity) * execution_price
-        commission_cost = gross_cost * self.commission
+        commission_cost = self.commission_fixed + (gross_cost * self.commission_percent)
         total_cost = gross_cost + commission_cost
 
         # Check if we have enough cash (for buys) or shares (for sells)
@@ -396,9 +406,50 @@ class Portfolio:
         Returns:
             True if order was executed, False otherwise
         """
+        price = (
+            limit_price if limit_price is not None else self._current_prices.get(asset)
+        )
+        if price is None or price <= 0:
+            return False
+
         portfolio_value = self.get_value()
+        current_position = self.get_position(asset)
+        current_value = current_position * price
+
+        # Calculate target value
         target_value = portfolio_value * target_percent
-        return self.order_target_value(asset, target_value, limit_price)
+
+        # Calculate the difference we need to trade
+        value_delta = target_value - current_value
+
+        if abs(value_delta) < 1e-6:  # Already at target
+            return False
+
+        # Account for fees when calculating target quantity
+        # When buying: we pay slippage + commission on the gross cost
+        # When selling: we receive slippage - commission on the gross proceeds
+        if value_delta > 0:  # Buying
+            # For buying: total_cost = quantity * execution_price * (1 + percent_commission) + fixed_commission
+            # We need: total_cost = value_delta
+            # Solving: quantity = (value_delta - fixed_commission) / (execution_price * (1 + percent_commission))
+            execution_price = price * (1 + self.slippage)
+            cost_multiplier = 1 + self.commission_percent
+            quantity_to_buy = (value_delta - self.commission_fixed) / (
+                execution_price * cost_multiplier
+            )
+            target_quantity = current_position + quantity_to_buy
+        else:  # Selling
+            # For selling: net_proceeds = quantity * execution_price * (1 - percent_commission) - fixed_commission
+            # We need: net_proceeds = abs(value_delta)
+            # Solving: quantity = (abs(value_delta) + fixed_commission) / (execution_price * (1 - percent_commission))
+            execution_price = price * (1 - self.slippage)
+            proceeds_multiplier = 1 - self.commission_percent
+            quantity_to_sell = (abs(value_delta) + self.commission_fixed) / (
+                execution_price * proceeds_multiplier
+            )
+            target_quantity = current_position - quantity_to_sell
+
+        return self.order_target(asset, target_quantity, limit_price)
 
     def close_position(self, asset: str, limit_price: Optional[float] = None) -> bool:
         """
@@ -532,8 +583,8 @@ class Engine:
         strategy: Strategy,
         data: Union[pl.DataFrame, Dict[str, pl.DataFrame]],
         initial_cash: float = 100_000.0,
-        commission: float = 0.001,
-        slippage: float = 0.0005,
+        commission: Union[float, tuple[float, float]] = 0.0,
+        slippage: float = 0.0,
         price_columns: Optional[Dict[str, str]] = None,
         warmup: Union[int, str] = "auto",
         order_delay: int = 0,
@@ -545,7 +596,8 @@ class Engine:
             strategy: Strategy instance to backtest
             data: Polars DataFrame with price data OR dict mapping asset names to DataFrames
             initial_cash: Starting cash balance
-            commission: Commission rate as fraction
+            commission: Commission as a percentage (e.g., 0.001 = 0.1%) or tuple of (fixed_commission, percent_commission)
+                       For example: 0.001 means 0.1% per trade, (5.0, 0.001) means $5 + 0.1% per trade
             slippage: Slippage rate as fraction
             price_columns: Dict mapping asset names to price columns
                           (default: auto-detected for dict input, {"asset": "close"} for single DataFrame)

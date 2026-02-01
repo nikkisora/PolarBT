@@ -66,9 +66,17 @@ portfolio.get_value()                               # Total portfolio value (cas
 **Transaction Costs:**
 Orders are subject to commission and slippage configured in Engine:
 ```python
-# Commission: percentage fee on order value
+# Commission: Can be percentage-only or mixed fixed + percentage
+# Option 1: Percentage only (backward compatible)
+commission = 0.001  # 0.1% per trade
+
+# Option 2: Fixed + Percentage
+commission = (5.0, 0.001)  # $5 + 0.1% per trade
+
 # Slippage: adverse price movement on execution
-cost = order_value * commission + order_value * slippage
+# Total cost calculation:
+# - Percentage only: order_value * commission_percent + order_value * slippage
+# - Mixed: fixed_commission + order_value * commission_percent + order_value * slippage
 ```
 
 ### Strategy Class
@@ -153,7 +161,7 @@ engine = Engine(
     strategy=strategy_instance,        # Instantiated strategy
     data=polars_dataframe,            # Input data
     initial_cash=100_000,             # Starting capital
-    commission=0.001,                 # 0.1% per trade
+    commission=0.001,                 # 0.1% per trade OR (5.0, 0.001) for $5 + 0.1%
     slippage=0.0005,                  # 0.05% adverse price movement
     price_columns=None,               # Dict mapping assets to price columns
     warmup="auto",                    # "auto", integer, or 0
@@ -266,7 +274,7 @@ results = backtest(
     data=df,
     params={"fast": 10, "slow": 30},
     initial_cash=100_000,
-    commission=0.001,
+    commission=0.001,              # Or (5.0, 0.001) for $5 + 0.1%
     slippage=0.0005,
 )
 ```
@@ -513,6 +521,73 @@ class RiskParity(Strategy):
             ctx.portfolio.order_target_percent("asset", risk_adjusted_allocation)
         else:
             ctx.portfolio.close_position("asset")
+```
+
+### Commission Models
+
+PolarBtest supports flexible commission structures to match real-world broker fees:
+
+**Percentage-Only Commission (Backward Compatible):**
+```python
+# 0.1% commission per trade (applies to both buys and sells)
+engine = Engine(strategy, data, commission=0.001)
+portfolio = Portfolio(commission=0.001)
+
+# For a $10,000 trade:
+# - Buy: costs $10,000 + $10 (commission) = $10,010
+# - Sell: receives $10,000 - $10 (commission) = $9,990
+```
+
+**Fixed Commission Only:**
+```python
+# $5 flat fee per trade, no percentage
+engine = Engine(strategy, data, commission=(5.0, 0.0))
+portfolio = Portfolio(commission=(5.0, 0.0))
+
+# For a $10,000 trade:
+# - Buy: costs $10,000 + $5 = $10,005
+# - Sell: receives $10,000 - $5 = $9,995
+```
+
+**Mixed Fixed + Percentage Commission:**
+```python
+# $5 fixed + 0.1% per trade (realistic broker fees)
+engine = Engine(strategy, data, commission=(5.0, 0.001))
+portfolio = Portfolio(commission=(5.0, 0.001))
+
+# For a $10,000 trade:
+# - Buy: costs $10,000 + $5 (fixed) + $10 (0.1%) = $10,015
+# - Sell: receives $10,000 - $5 (fixed) - $10 (0.1%) = $9,985
+```
+
+**Common Broker Examples:**
+```python
+# Interactive Brokers (US stocks): $0.005 per share, $1 minimum
+# Approximation: $1 fixed + very small percentage
+commission = (1.0, 0.00001)
+
+# Robinhood (commission-free): Only regulatory fees
+commission = (0.0, 0.0001)  # ~0.01% for SEC fees
+
+# Traditional broker: $5-10 per trade
+commission = (7.0, 0.0)
+
+# Crypto exchange (e.g., Coinbase Pro): 0.5% maker/taker
+commission = 0.005
+```
+
+**Impact on Position Sizing:**
+The `order_target_percent()` method automatically accounts for commissions:
+```python
+portfolio = Portfolio(initial_cash=100_000, commission=(5.0, 0.001))
+portfolio.update_prices({"BTC": 50_000})
+
+# Target 50% allocation
+portfolio.order_target_percent("BTC", 0.5)
+
+# The method calculates the exact quantity needed such that
+# after paying both fixed and percentage commissions,
+# the position value equals 50% of portfolio value
 ```
 
 ## Performance Optimization

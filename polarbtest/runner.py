@@ -37,7 +37,7 @@ def backtest(
     data: Union[pl.DataFrame, Dict[str, pl.DataFrame]],
     params: Optional[Dict[str, Any]] = None,
     initial_cash: float = 100_000.0,
-    commission: float = 0.001,
+    commission: Union[float, tuple[float, float]] = 0.001,
     slippage: float = 0.0005,
     price_columns: Optional[Dict[str, str]] = None,
     warmup: Union[int, str] = "auto",
@@ -54,7 +54,8 @@ def backtest(
         data: Polars DataFrame with price data OR dict mapping asset names to DataFrames
         params: Dictionary of strategy parameters (default None)
         initial_cash: Starting capital (default 100,000)
-        commission: Commission rate as fraction (default 0.001 = 0.1%)
+        commission: Commission as a percentage (e.g., 0.001 = 0.1%) or tuple of (fixed_commission, percent_commission)
+                   For example: 0.001 means 0.1% per trade, (5.0, 0.001) means $5 + 0.1% per trade
         slippage: Slippage rate as fraction (default 0.0005 = 0.05%)
         price_columns: Dict mapping asset names to price columns
         warmup: Number of bars to skip before executing strategy, or "auto" to automatically
@@ -175,7 +176,7 @@ def backtest_batch(
     data: Union[pl.DataFrame, Dict[str, pl.DataFrame]],
     param_sets: List[Dict[str, Any]],
     initial_cash: float = 100_000.0,
-    commission: float = 0.001,
+    commission: Union[float, tuple[float, float]] = 0.001,
     slippage: float = 0.0005,
     price_columns: Optional[Dict[str, str]] = None,
     warmup: Union[int, str] = "auto",
@@ -194,7 +195,7 @@ def backtest_batch(
         data: Polars DataFrame with price data
         param_sets: List of parameter dictionaries to test
         initial_cash: Starting capital
-        commission: Commission rate
+        commission: Commission as a percentage or tuple of (fixed_commission, percent_commission)
         slippage: Slippage rate
         price_columns: Dict mapping asset names to price columns
         warmup: Number of bars to skip or "auto" (default "auto")
@@ -282,7 +283,7 @@ def optimize(
     objective: str = "sharpe_ratio",
     maximize: bool = True,
     initial_cash: float = 100_000.0,
-    commission: float = 0.001,
+    commission: Union[float, tuple[float, float]] = 0.001,
     slippage: float = 0.0005,
     price_columns: Optional[Dict[str, str]] = None,
     warmup: Union[int, str] = "auto",
@@ -300,7 +301,7 @@ def optimize(
         objective: Metric to optimize (default "sharpe_ratio")
         maximize: Whether to maximize objective (default True)
         initial_cash: Starting capital
-        commission: Commission rate
+        commission: Commission as a percentage or tuple of (fixed_commission, percent_commission)
         slippage: Slippage rate
         price_columns: Asset price columns
         warmup: Number of bars to skip or "auto" (default "auto")
@@ -365,7 +366,7 @@ def walk_forward_analysis(
     objective: str = "sharpe_ratio",
     maximize: bool = True,
     initial_cash: float = 100_000.0,
-    commission: float = 0.001,
+    commission: Union[float, tuple[float, float]] = 0.001,
     slippage: float = 0.0005,
     price_columns: Optional[Dict[str, str]] = None,
     warmup: Union[int, str] = "auto",
@@ -385,7 +386,7 @@ def walk_forward_analysis(
         objective: Metric to optimize
         maximize: Whether to maximize objective
         initial_cash: Starting capital
-        commission: Commission rate
+        commission: Commission as a percentage or tuple of (fixed_commission, percent_commission)
         slippage: Slippage rate
         price_columns: Asset price columns
         warmup: Number of bars to skip or "auto" (default "auto")

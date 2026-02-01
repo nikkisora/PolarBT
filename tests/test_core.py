@@ -117,6 +117,99 @@ class TestPortfolio:
         success = portfolio.order("BTC", -1.0)
         assert not success
 
+    def test_fixed_commission(self):
+        """Test fixed commission only."""
+        # $5 fixed commission per trade, no percentage
+        portfolio = Portfolio(initial_cash=100_000, commission=(5.0, 0.0), slippage=0.0)
+        portfolio.update_prices({"BTC": 50_000})
+
+        # Buy 1 BTC
+        success = portfolio.order("BTC", 1.0)
+        assert success
+        assert portfolio.get_position("BTC") == 1.0
+
+        # Cash should be: 100_000 - 50_000 (price) - 5 (fixed commission) = 49_995
+        assert portfolio.cash == pytest.approx(49_995, abs=0.01)
+
+    def test_mixed_commission(self):
+        """Test mixed fixed + percentage commission."""
+        # $5 fixed + 0.1% per trade
+        portfolio = Portfolio(
+            initial_cash=100_000, commission=(5.0, 0.001), slippage=0.0
+        )
+        portfolio.update_prices({"BTC": 50_000})
+
+        # Buy 1 BTC
+        success = portfolio.order("BTC", 1.0)
+        assert success
+        assert portfolio.get_position("BTC") == 1.0
+
+        # Total cost = 50_000 (price) + 5 (fixed) + 50 (0.1% of 50_000) = 50_055
+        # Cash should be: 100_000 - 50_055 = 49_945
+        assert portfolio.cash == pytest.approx(49_945, abs=0.01)
+
+    def test_percentage_commission_backward_compatible(self):
+        """Test that percentage-only commission still works (backward compatibility)."""
+        # 0.1% commission (old style, should work the same)
+        portfolio = Portfolio(initial_cash=100_000, commission=0.001, slippage=0.0)
+        portfolio.update_prices({"BTC": 50_000})
+
+        # Buy 1 BTC
+        success = portfolio.order("BTC", 1.0)
+        assert success
+        assert portfolio.get_position("BTC") == 1.0
+
+        # Total cost = 50_000 + 50 (0.1% commission) = 50_050
+        # Cash should be: 100_000 - 50_050 = 49_950
+        assert portfolio.cash == pytest.approx(49_950, abs=0.01)
+
+    def test_fixed_commission_sell(self):
+        """Test fixed commission on sell orders."""
+        portfolio = Portfolio(initial_cash=100_000, commission=(5.0, 0.0), slippage=0.0)
+        portfolio.update_prices({"BTC": 50_000})
+
+        # Buy 1 BTC (costs 50_000 + 5 = 50_005)
+        portfolio.order("BTC", 1.0)
+        assert portfolio.cash == pytest.approx(49_995, abs=0.01)
+
+        # Sell 1 BTC (receives 50_000 - 5 = 49_995)
+        portfolio.order("BTC", -1.0)
+        assert portfolio.cash == pytest.approx(99_990, abs=0.01)
+        assert portfolio.get_position("BTC") == 0.0
+
+    def test_order_target_percent_with_fixed_commission(self):
+        """Test order_target_percent with fixed commission."""
+        portfolio = Portfolio(initial_cash=100_000, commission=(5.0, 0.0), slippage=0.0)
+        portfolio.update_prices({"BTC": 50_000})
+
+        # Allocate 50% to BTC
+        portfolio.order_target_percent("BTC", 0.5)
+
+        # Position value should be approximately 50% of portfolio (accounting for fixed fee)
+        position_value = portfolio.get_position("BTC") * 50_000
+        total_value = portfolio.get_value()
+
+        # With fixed commission, we should be close to 50%
+        # Target is ~50k, but we pay $5 commission, so actual allocation is slightly less
+        assert 0.48 < position_value / total_value < 0.52
+
+    def test_order_target_percent_with_mixed_commission(self):
+        """Test order_target_percent with mixed commission."""
+        portfolio = Portfolio(
+            initial_cash=100_000, commission=(5.0, 0.001), slippage=0.0
+        )
+        portfolio.update_prices({"BTC": 50_000})
+
+        # Allocate 50% to BTC
+        portfolio.order_target_percent("BTC", 0.5)
+
+        # Position value should be approximately 50% of portfolio
+        position_value = portfolio.get_position("BTC") * 50_000
+        total_value = portfolio.get_value()
+
+        # Allow tolerance for commission (both fixed and percentage)
+        assert 0.47 < position_value / total_value < 0.52
+
 
 class SimpleStrategy(Strategy):
     """Simple test strategy."""

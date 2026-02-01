@@ -45,7 +45,12 @@ def ema(column: str, period: int, adjust: bool = False) -> pl.Expr:
         ])
     """
     alpha = 2.0 / (period + 1)
-    return pl.col(column).ewm_mean(alpha=alpha, adjust=adjust)
+    # Make first value null to match SMA behavior
+    return (
+        pl.when(pl.int_range(pl.len()) == 0)
+        .then(None)
+        .otherwise(pl.col(column).ewm_mean(alpha=alpha, adjust=adjust))
+    )
 
 
 def rsi(column: str, period: int = 14) -> pl.Expr:
@@ -241,9 +246,9 @@ def crossover(fast_column: str, slow_column: str) -> pl.Expr:
             crossover("sma_10", "sma_20").alias("golden_cross")
         ])
     """
-    curr_above = pl.col(fast_column) > pl.col(slow_column)
-    prev_below = pl.col(fast_column).shift(1) <= pl.col(slow_column).shift(1)
-    return curr_above & prev_below
+    curr_above_or_equal = pl.col(fast_column) >= pl.col(slow_column)
+    prev_below = pl.col(fast_column).shift(1) < pl.col(slow_column).shift(1)
+    return curr_above_or_equal & prev_below
 
 
 def crossunder(fast_column: str, slow_column: str) -> pl.Expr:
@@ -265,6 +270,6 @@ def crossunder(fast_column: str, slow_column: str) -> pl.Expr:
             crossunder("sma_10", "sma_20").alias("death_cross")
         ])
     """
-    curr_below = pl.col(fast_column) < pl.col(slow_column)
-    prev_above = pl.col(fast_column).shift(1) >= pl.col(slow_column).shift(1)
-    return curr_below & prev_above
+    curr_below_or_equal = pl.col(fast_column) <= pl.col(slow_column)
+    prev_above = pl.col(fast_column).shift(1) > pl.col(slow_column).shift(1)
+    return curr_below_or_equal & prev_above

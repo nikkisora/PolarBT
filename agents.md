@@ -25,6 +25,10 @@ Find comprehensive code and project structure explanation in `agents/CODE_STYLE.
 - Inline imports in Python (move to top of file with other imports)
 - Any other style that is inconsistent with the file
 
+### Problem solving
+
+If there are different ways to solve a particular problem always prefer more forward thinking ones, and the ones that solve problems now instead of avoiding them. If it is a major decision prefer asking the user for feedback.
+
 ### Found issues during development
 
 If during development you encountered a potential problem or bug, and it doesn't affect the current feature, then note your findings in `POTENTIAL_ISSUES.md`.
