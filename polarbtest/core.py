@@ -15,6 +15,9 @@ from typing import Any
 
 import polars as pl
 
+from polarbtest.orders import Order, OrderStatus, OrderType
+from polarbtest.trades import TradeTracker
+
 
 def standardize_dataframe(
     df: pl.DataFrame,
@@ -110,7 +113,7 @@ def merge_asset_dataframes(
         if "timestamp" in df.columns:
             df_subset = df.select(["timestamp", price_column]).rename({price_column: new_col_name})
 
-            merged = df_subset if merged is None else merged.join(df_subset, on="timestamp", how="outer", coalesce=True)
+            merged = df_subset if merged is None else merged.join(df_subset, on="timestamp", how="full", coalesce=True)
         else:
             # No timestamp - add index and merge
             df_subset = df.select([price_column]).rename({price_column: new_col_name})
@@ -152,6 +155,7 @@ class Portfolio:
     - Asset positions (can be fractional)
     - Historical equity curve
     - Transaction costs and slippage
+    - Orders and trades
     """
 
     def __init__(
@@ -192,23 +196,47 @@ class Portfolio:
         self.equity_curve: list[float] = []
         self.timestamps: list[Any] = []
 
-        # Current prices for portfolio valuation
+        # Current prices and OHLC data for portfolio valuation
         self._current_prices: dict[str, float] = {}
-
-        # Pending orders queue: List of (bar_to_execute, asset, quantity, limit_price)
-        self._pending_orders: list[tuple[int, str, float, float | None]] = []
+        self._current_ohlc: dict[str, dict[str, float]] = {}
         self._current_bar: int = 0
+        self._current_timestamp: Any = None
 
-    def update_prices(self, prices: dict[str, float], bar_index: int = 0) -> None:
+        # Order management
+        self.orders: dict[str, Order] = {}
+        self._next_order_id: int = 0
+
+        # Trade tracking
+        self.trade_tracker = TradeTracker()
+
+        # Stop-loss tracking: {asset: {"stop_price": float, "order_id": str}}
+        self._stop_losses: dict[str, dict[str, Any]] = {}
+
+    def update_prices(
+        self,
+        prices: dict[str, float],
+        bar_index: int = 0,
+        ohlc_data: dict[str, dict[str, float]] | None = None,
+        timestamp: Any = None,
+    ) -> None:
         """
-        Update current market prices for all assets and execute pending orders.
+        Update current market prices and OHLC data for all assets and execute pending orders.
 
         Args:
-            prices: Dictionary mapping asset names to current prices
+            prices: Dictionary mapping asset names to current close prices
             bar_index: Current bar index (used for order delay)
+            ohlc_data: Optional OHLC data {asset: {"open": x, "high": x, "low": x, "close": x}}
+            timestamp: Current timestamp
         """
         self._current_prices = prices
+        self._current_ohlc = ohlc_data or {}
         self._current_bar = bar_index
+        self._current_timestamp = timestamp
+
+        # Check and execute stop-loss orders first
+        self._check_stop_losses()
+
+        # Execute pending orders
         self._execute_pending_orders()
 
     def get_value(self) -> float:
@@ -233,95 +261,264 @@ class Portfolio:
         """
         return self.positions.get(asset, 0.0)
 
-    def _execute_pending_orders(self) -> None:
-        """Execute orders that are due based on order_delay."""
-        if not self._pending_orders:
-            return
+    def _check_stop_losses(self) -> None:
+        """Check if any stop-loss orders should be triggered."""
+        for asset in list(self._stop_losses.keys()):
+            stop_info = self._stop_losses[asset]
+            stop_price = stop_info["stop_price"]
 
-        # Filter orders that should execute this bar
+            # Get OHLC data for this asset
+            ohlc = self._current_ohlc.get(asset, {})
+            low = ohlc.get("low", self._current_prices.get(asset, float("inf")))
+
+            # Check if stop was hit (for long positions, check if low <= stop_price)
+            position_size = self.get_position(asset)
+            if position_size > 0 and low <= stop_price:
+                # Stop hit - create market order to close position
+                self.close_position(asset)
+                # Remove the stop-loss
+                del self._stop_losses[asset]
+
+    def _execute_pending_orders(self) -> None:
+        """Execute orders that are due."""
+        # Get all pending orders that should execute this bar
         orders_to_execute = [
-            (asset, qty, price) for (bar, asset, qty, price) in self._pending_orders if bar <= self._current_bar
+            order
+            for order in self.orders.values()
+            if order.is_active() and order.created_bar + self.order_delay <= self._current_bar
         ]
 
-        # Remove executed orders from pending
-        self._pending_orders = [order for order in self._pending_orders if order[0] > self._current_bar]
+        for order in orders_to_execute:
+            self._try_execute_order(order)
 
-        # Execute the orders
-        for asset, quantity, limit_price in orders_to_execute:
-            self._execute_order_immediate(asset, quantity, limit_price)
+    def _check_order_expiry(self) -> None:
+        """Check and expire orders that have passed their valid_until time."""
+        for order in self.orders.values():
+            if order.is_active() and order.valid_until is not None and self._current_bar > order.valid_until:
+                order.mark_expired()
 
-    def _execute_order_immediate(self, asset: str, quantity: float, limit_price: float | None = None) -> bool:
+    def _can_fill_limit_order(self, order: Order) -> bool:
         """
-        Execute an order immediately at current prices.
+        Check if a limit order can be filled based on current OHLC data.
+
+        For buy limit: low must be <= limit_price
+        For sell limit: high must be >= limit_price
 
         Args:
-            asset: Asset name
-            quantity: Number of units to buy (positive) or sell (negative)
-            limit_price: Optional limit price (uses current market price if None)
+            order: The limit order to check
+
+        Returns:
+            True if order can be filled, False otherwise
+        """
+        if order.order_type != OrderType.LIMIT or order.limit_price is None:
+            return True
+
+        ohlc = self._current_ohlc.get(order.asset)
+        if not ohlc:
+            return False
+
+        if order.is_buy():
+            return ohlc.get("low", float("inf")) <= order.limit_price
+        else:
+            return ohlc.get("high", 0) >= order.limit_price
+
+    def _try_execute_order(self, order: Order) -> bool:
+        """
+        Try to execute an order.
+
+        Args:
+            order: Order to execute
 
         Returns:
             True if order was executed, False otherwise
         """
-        if quantity == 0:
+        if order.size == 0:
+            order.mark_rejected()
             return False
 
-        # Use limit price or current market price
-        price = limit_price if limit_price is not None else self._current_prices.get(asset)
+        # Check if limit order can be filled
+        if order.order_type == OrderType.LIMIT and not self._can_fill_limit_order(order):
+            return False
+
+        # Determine execution price
+        if order.order_type == OrderType.LIMIT and order.limit_price is not None:
+            price = order.limit_price
+        else:
+            price = self._current_prices.get(order.asset)
 
         if price is None or price <= 0:
+            order.mark_rejected()
             return False
 
-        # Apply slippage (buy at higher price, sell at lower price)
-        execution_price = price * (1 + self.slippage) if quantity > 0 else price * (1 - self.slippage)
+        # Apply slippage
+        execution_price = price * (1 + self.slippage) if order.is_buy() else price * (1 - self.slippage)
 
-        # Calculate total cost including commission
-        gross_cost = abs(quantity) * execution_price
+        # Calculate costs
+        gross_cost = abs(order.size) * execution_price
         commission_cost = self.commission_fixed + (gross_cost * self.commission_percent)
         total_cost = gross_cost + commission_cost
 
+        # Track old position for trade tracking
+        old_position = self.get_position(order.asset)
+
         # Check if we have enough cash (for buys) or shares (for sells)
-        if quantity > 0:  # Buy
+        if order.is_buy():
             if total_cost > self.cash:
-                return False  # Not enough cash
+                order.mark_rejected()
+                return False
             self.cash -= total_cost
-            self.positions[asset] += quantity
-        else:  # Sell
-            if abs(quantity) > self.positions.get(asset, 0):
-                return False  # Not enough shares
+            self.positions[order.asset] += order.size
+        else:
+            if abs(order.size) > self.positions.get(order.asset, 0):
+                order.mark_rejected()
+                return False
             self.cash += gross_cost - commission_cost
-            self.positions[asset] += quantity  # quantity is negative
+            self.positions[order.asset] += order.size
 
             # Clean up zero positions
-            if abs(self.positions[asset]) < 1e-10:
-                del self.positions[asset]
+            if abs(self.positions[order.asset]) < 1e-10:
+                del self.positions[order.asset]
+
+        # Mark order as filled
+        slippage_cost = abs(order.size) * abs(execution_price - price)
+        order.mark_filled(
+            bar=self._current_bar,
+            timestamp=self._current_timestamp,
+            price=execution_price,
+            commission=commission_cost,
+            slippage=slippage_cost,
+        )
+
+        # Update trade tracker
+        new_position = self.get_position(order.asset)
+        self._update_trade_tracker(order.asset, old_position, new_position, execution_price, commission_cost)
 
         return True
 
-    def order(self, asset: str, quantity: float, limit_price: float | None = None) -> bool:
+    def _update_trade_tracker(
+        self, asset: str, old_position: float, new_position: float, price: float, commission: float
+    ) -> None:
+        """
+        Update trade tracker based on position changes.
+
+        Args:
+            asset: Asset symbol
+            old_position: Position before order
+            new_position: Position after order
+            price: Execution price
+            commission: Commission paid
+        """
+        # Position opened
+        if old_position == 0 and new_position != 0:
+            self.trade_tracker.on_position_opened(
+                asset=asset,
+                size=new_position,
+                price=price,
+                bar=self._current_bar,
+                timestamp=self._current_timestamp,
+                commission=commission,
+            )
+        # Position closed completely
+        elif old_position != 0 and new_position == 0:
+            self.trade_tracker.on_position_closed(
+                asset=asset,
+                size_closed=abs(old_position),
+                price=price,
+                bar=self._current_bar,
+                timestamp=self._current_timestamp,
+                commission=commission,
+            )
+        # Position reduced (partial close)
+        elif abs(new_position) < abs(old_position):
+            size_closed = abs(old_position) - abs(new_position)
+            self.trade_tracker.on_position_closed(
+                asset=asset,
+                size_closed=size_closed,
+                price=price,
+                bar=self._current_bar,
+                timestamp=self._current_timestamp,
+                commission=commission,
+            )
+        # Position reversed (e.g., long -> short)
+        elif (old_position > 0 and new_position < 0) or (old_position < 0 and new_position > 0):
+            self.trade_tracker.on_position_reversed(
+                asset=asset,
+                old_size=old_position,
+                new_size=new_position,
+                price=price,
+                bar=self._current_bar,
+                timestamp=self._current_timestamp,
+                commission=commission,
+            )
+
+    def _generate_order_id(self) -> str:
+        """Generate a unique order ID."""
+        order_id = f"order_{self._next_order_id}"
+        self._next_order_id += 1
+        return order_id
+
+    def order(
+        self,
+        asset: str,
+        quantity: float,
+        limit_price: float | None = None,
+        stop_price: float | None = None,
+        order_type: OrderType | None = None,
+        tags: list[str] | None = None,
+    ) -> str | None:
         """
         Place an order for an asset.
 
         Args:
             asset: Asset name
             quantity: Number of units to buy (positive) or sell (negative)
-            limit_price: Optional limit price (uses current market price if None)
+            limit_price: Optional limit price for LIMIT orders
+            stop_price: Optional stop price for STOP orders
+            order_type: Order type (defaults to MARKET if not specified)
+            tags: Optional tags for categorization
 
         Returns:
-            True if order was placed/queued, False otherwise
+            order_id if order was placed, None if rejected
         """
         if quantity == 0:
-            return False
+            return None
 
-        # If order_delay is 0, execute immediately
+        # Determine order type if not specified
+        if order_type is None:
+            if limit_price is not None and stop_price is not None:
+                order_type = OrderType.STOP_LIMIT
+            elif limit_price is not None:
+                order_type = OrderType.LIMIT
+            elif stop_price is not None:
+                order_type = OrderType.STOP
+            else:
+                order_type = OrderType.MARKET
+
+        # Create order
+        order_id = self._generate_order_id()
+        order = Order(
+            order_id=order_id,
+            asset=asset,
+            size=quantity,
+            order_type=order_type,
+            status=OrderStatus.PENDING,
+            limit_price=limit_price,
+            stop_price=stop_price,
+            created_bar=self._current_bar,
+            created_timestamp=self._current_timestamp,
+            tags=tags or [],
+        )
+
+        # Store order
+        self.orders[order_id] = order
+
+        # Try to execute immediately if no delay
         if self.order_delay == 0:
-            return self._execute_order_immediate(asset, quantity, limit_price)
+            self._try_execute_order(order)
 
-        # Otherwise, queue the order for future execution
-        execute_at_bar = self._current_bar + self.order_delay
-        self._pending_orders.append((execute_at_bar, asset, quantity, limit_price))
-        return True
+        return order_id
 
-    def order_target(self, asset: str, target_quantity: float, limit_price: float | None = None) -> bool:
+    def order_target(self, asset: str, target_quantity: float, limit_price: float | None = None) -> str | None:
         """
         Order to reach a target position size.
 
@@ -331,13 +528,13 @@ class Portfolio:
             limit_price: Optional limit price
 
         Returns:
-            True if order was executed, False otherwise
+            order_id if order was placed, None otherwise
         """
         current_position = self.get_position(asset)
         delta = target_quantity - current_position
-        return self.order(asset, delta, limit_price)
+        return self.order(asset, delta, limit_price=limit_price)
 
-    def order_target_value(self, asset: str, target_value: float, limit_price: float | None = None) -> bool:
+    def order_target_value(self, asset: str, target_value: float, limit_price: float | None = None) -> str | None:
         """
         Order to reach a target position value.
 
@@ -347,16 +544,16 @@ class Portfolio:
             limit_price: Optional limit price
 
         Returns:
-            True if order was executed, False otherwise
+            order_id if order was placed, None otherwise
         """
         price = limit_price if limit_price is not None else self._current_prices.get(asset)
         if price is None or price <= 0:
-            return False
+            return None
 
         target_quantity = target_value / price
         return self.order_target(asset, target_quantity, limit_price)
 
-    def order_target_percent(self, asset: str, target_percent: float, limit_price: float | None = None) -> bool:
+    def order_target_percent(self, asset: str, target_percent: float, limit_price: float | None = None) -> str | None:
         """
         Order to reach a target percentage of portfolio value.
 
@@ -366,11 +563,11 @@ class Portfolio:
             limit_price: Optional limit price
 
         Returns:
-            True if order was executed, False otherwise
+            order_id if order was placed, None otherwise
         """
         price = limit_price if limit_price is not None else self._current_prices.get(asset)
         if price is None or price <= 0:
-            return False
+            return None
 
         portfolio_value = self.get_value()
         current_position = self.get_position(asset)
@@ -383,7 +580,7 @@ class Portfolio:
         value_delta = target_value - current_value
 
         if abs(value_delta) < 1e-6:  # Already at target
-            return False
+            return None
 
         # Account for fees when calculating target quantity
         # When buying: we pay slippage + commission on the gross cost
@@ -407,7 +604,7 @@ class Portfolio:
 
         return self.order_target(asset, target_quantity, limit_price)
 
-    def close_position(self, asset: str, limit_price: float | None = None) -> bool:
+    def close_position(self, asset: str, limit_price: float | None = None) -> str | None:
         """
         Close entire position in an asset.
 
@@ -416,7 +613,7 @@ class Portfolio:
             limit_price: Optional limit price
 
         Returns:
-            True if position was closed, False otherwise
+            order_id if order was placed, None otherwise
         """
         return self.order_target(asset, 0, limit_price)
 
@@ -425,6 +622,109 @@ class Portfolio:
         assets = list(self.positions.keys())
         for asset in assets:
             self.close_position(asset)
+
+    def get_orders(self, status: OrderStatus | None = None, asset: str | None = None) -> list[Order]:
+        """
+        Get orders, optionally filtered by status and/or asset.
+
+        Args:
+            status: Filter by order status (None = all orders)
+            asset: Filter by asset (None = all assets)
+
+        Returns:
+            List of Order objects
+        """
+        orders = list(self.orders.values())
+
+        if status is not None:
+            orders = [o for o in orders if o.status == status]
+
+        if asset is not None:
+            orders = [o for o in orders if o.asset == asset]
+
+        return orders
+
+    def get_order(self, order_id: str) -> Order | None:
+        """
+        Get a specific order by ID.
+
+        Args:
+            order_id: Order ID
+
+        Returns:
+            Order object or None if not found
+        """
+        return self.orders.get(order_id)
+
+    def cancel_order(self, order_id: str) -> bool:
+        """
+        Cancel a pending order.
+
+        Args:
+            order_id: Order ID to cancel
+
+        Returns:
+            True if cancelled, False if order not found or can't be cancelled
+        """
+        order = self.orders.get(order_id)
+        if order is None:
+            return False
+
+        if not order.can_be_cancelled():
+            return False
+
+        order.mark_cancelled()
+        return True
+
+    def set_stop_loss(self, asset: str, stop_price: float | None = None, stop_pct: float | None = None) -> str | None:
+        """
+        Set a stop-loss order for a position.
+
+        Args:
+            asset: Asset symbol
+            stop_price: Absolute stop price
+            stop_pct: Stop as percentage below entry (e.g., -0.05 for 5% stop)
+
+        Returns:
+            order_id if stop-loss was set, None otherwise
+        """
+        position = self.get_position(asset)
+        if position == 0:
+            return None  # No position to protect
+
+        # Calculate stop price
+        if stop_price is None and stop_pct is not None:
+            current_price = self._current_prices.get(asset)
+            if current_price is None:
+                return None
+            stop_price = current_price * (1 + stop_pct)
+
+        if stop_price is None:
+            return None
+
+        # Store stop-loss info
+        order_id = self._generate_order_id()
+        self._stop_losses[asset] = {"stop_price": stop_price, "order_id": order_id}
+
+        return order_id
+
+    def get_trades(self) -> pl.DataFrame:
+        """
+        Get all completed trades as a DataFrame.
+
+        Returns:
+            Polars DataFrame with trade history
+        """
+        return self.trade_tracker.get_trades_df()
+
+    def get_trade_stats(self) -> dict[str, float]:
+        """
+        Get aggregate trade statistics.
+
+        Returns:
+            Dictionary with win_rate, avg_win, avg_loss, profit_factor, etc.
+        """
+        return self.trade_tracker.get_trade_stats()
 
     def record_equity(self, timestamp: Any) -> None:
         """
@@ -499,7 +799,7 @@ class Strategy(ABC):
         """
         pass
 
-    def on_start(self, portfolio: Portfolio) -> None: # noqa: B027
+    def on_start(self, portfolio: Portfolio) -> None:  # noqa: B027
         """
         Called once before the backtest starts.
 
@@ -510,7 +810,7 @@ class Strategy(ABC):
         """
         pass
 
-    def on_finish(self, portfolio: Portfolio) -> None: # noqa: B027
+    def on_finish(self, portfolio: Portfolio) -> None:  # noqa: B027
         """
         Called once after the backtest completes.
 
@@ -695,12 +995,49 @@ class Engine:
                 for asset, price_col in self.price_columns.items()
             }
 
-            # Update portfolio with current prices
-            self.portfolio.update_prices(current_prices, idx)
+            # Extract OHLC data for all assets
+            ohlc_data: dict[str, dict[str, float]] = {}
+            for asset in self.price_columns:
+                # Try to find OHLC columns for this asset
+                # Support both prefixed (BTC_open) and unprefixed (open) formats
+                if asset == "asset":
+                    # Single asset case - use unprefixed columns
+                    ohlc_data[asset] = {
+                        "open": float(row_dict.get("open", current_prices[asset]))
+                        if row_dict.get("open") is not None
+                        else current_prices[asset],
+                        "high": float(row_dict.get("high", current_prices[asset]))
+                        if row_dict.get("high") is not None
+                        else current_prices[asset],
+                        "low": float(row_dict.get("low", current_prices[asset]))
+                        if row_dict.get("low") is not None
+                        else current_prices[asset],
+                        "close": current_prices[asset],
+                    }
+                else:
+                    # Multi-asset case - try prefixed columns
+                    ohlc_data[asset] = {
+                        "open": float(row_dict.get(f"{asset}_open", current_prices[asset]))
+                        if row_dict.get(f"{asset}_open") is not None
+                        else current_prices[asset],
+                        "high": float(row_dict.get(f"{asset}_high", current_prices[asset]))
+                        if row_dict.get(f"{asset}_high") is not None
+                        else current_prices[asset],
+                        "low": float(row_dict.get(f"{asset}_low", current_prices[asset]))
+                        if row_dict.get(f"{asset}_low") is not None
+                        else current_prices[asset],
+                        "close": current_prices[asset],
+                    }
+
+            # Get timestamp
+            current_timestamp = row_dict.get(timestamp_col)
+
+            # Update portfolio with current prices and OHLC data
+            self.portfolio.update_prices(current_prices, idx, ohlc_data, current_timestamp)
 
             # Create context for strategy
             ctx = BacktestContext(
-                timestamp=row_dict.get(timestamp_col),
+                timestamp=current_timestamp,
                 row=row_dict,
                 portfolio=self.portfolio,
                 bar_index=idx,
@@ -748,5 +1085,9 @@ class Engine:
         metrics["final_equity"] = self.portfolio.get_value()
         metrics["final_positions"] = dict(self.portfolio.positions)
         metrics["final_cash"] = self.portfolio.cash
+
+        # Add trade information
+        metrics["trades"] = self.portfolio.get_trades()
+        metrics["trade_stats"] = self.portfolio.get_trade_stats()
 
         return metrics

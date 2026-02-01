@@ -57,7 +57,10 @@ After adding a feature analyze the code changes based on the following pillars:
 
 ### Cleanup
 
-After finishing implementing, testing and reviewing the feature, always check if readme, agents, documentation and examples need to be updated. Put the summary of your work in the archive folder.
+After finishing implementing, testing and reviewing the feature, always:
+1. Run ruff and mypy
+2. Update `TODO.md`, `IMPLEMENTATION.md`, `README.md` and examples if needed
+3. Put the summary of your work in the archive folder
 
 ## Module Structure
 
@@ -73,7 +76,6 @@ polarbtest/
 
 - See `IMPLEMENTATION.md` for detailed API reference, code patterns, and troubleshooting
 - See `README.md` for installation and quick start guide
-- See `agents/CODE_STYLE.md` for detailed coding style guide
 - Check source code docstrings for detailed method documentation
 
 # Code style

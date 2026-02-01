@@ -18,7 +18,9 @@ from polarbtest.core import (
     merge_asset_dataframes,
     standardize_dataframe,
 )
+from polarbtest.orders import Order, OrderStatus, OrderType
 from polarbtest.runner import backtest, backtest_batch
+from polarbtest.trades import Trade, TradeTracker
 
 __version__ = "0.1.0"
 __all__ = [
@@ -32,4 +34,9 @@ __all__ = [
     "merge_asset_dataframes",
     "indicators",
     "metrics",
+    "Order",
+    "OrderType",
+    "OrderStatus",
+    "Trade",
+    "TradeTracker",
 ]

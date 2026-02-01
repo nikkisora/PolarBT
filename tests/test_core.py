@@ -103,8 +103,14 @@ class TestPortfolio:
         portfolio.update_prices({"BTC": 50_000})
 
         # Try to buy 1 BTC (costs 50k but we only have 1k)
-        success = portfolio.order("BTC", 1.0)
-        assert not success
+        order_id = portfolio.order("BTC", 1.0)
+        # Order is created but should be rejected on execution
+        assert order_id is not None
+        order = portfolio.get_order(order_id)
+        # With order_delay=0, order is executed immediately and rejected
+        from polarbtest.orders import OrderStatus
+
+        assert order.status == OrderStatus.REJECTED
         assert portfolio.get_position("BTC") == 0.0
 
     def test_insufficient_shares(self):
@@ -113,8 +119,12 @@ class TestPortfolio:
         portfolio.update_prices({"BTC": 50_000})
 
         # Try to sell BTC we don't have
-        success = portfolio.order("BTC", -1.0)
-        assert not success
+        order_id = portfolio.order("BTC", -1.0)
+        assert order_id is not None
+        order = portfolio.get_order(order_id)
+        from polarbtest.orders import OrderStatus
+
+        assert order.status == OrderStatus.REJECTED
 
     def test_fixed_commission(self):
         """Test fixed commission only."""
