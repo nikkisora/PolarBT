@@ -27,10 +27,14 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+plotting = [
+    "plotly>=5.0.0",
+]
 dev = [
     "pytest>=7.0.0",
     "ruff>=0.1.0",
     "mypy>=1.0.0",
+    "plotly>=5.0.0",
 ]
 
 [project.urls]
@@ -81,6 +85,10 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "numpy.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "plotly.*"
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

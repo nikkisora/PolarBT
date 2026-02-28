@@ -1648,6 +1648,7 @@ class Engine:
 
         self.portfolio: Portfolio | None = None
         self.results: dict[str, Any] | None = None
+        self.processed_data: pl.DataFrame | None = None
 
     def _calculate_auto_warmup(self, df: pl.DataFrame) -> int:
         """
@@ -1706,6 +1707,7 @@ class Engine:
 
         # Preprocess data using strategy
         processed_data = self.strategy.preprocess(self.data)
+        self.processed_data = processed_data
 
         # Calculate warmup period if set to "auto"
         warmup_periods: int

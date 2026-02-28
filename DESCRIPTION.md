@@ -5,6 +5,7 @@ A lightweight, high-performance backtesting library for trading strategy develop
 **Version**: 0.1.0
 **Python**: >= 3.10
 **Dependencies**: polars >= 0.19.0, numpy >= 1.24.0
+**Optional**: plotly >= 5.0.0 (for visualization)
 
 ## Architecture
 
@@ -30,7 +31,10 @@ polarbtest/
 ├── trades.py         # Trade, TradeTracker
 ├── indicators.py     # Technical indicators as Polars expressions
 ├── metrics.py        # Performance metrics
-└── runner.py         # backtest(), backtest_batch(), optimize(), walk_forward_analysis()
+├── runner.py         # backtest(), backtest_batch(), optimize(), walk_forward_analysis()
+└── plotting/
+    ├── __init__.py   # plot_backtest, plot_returns_distribution
+    └── charts.py     # Chart generation using Plotly
 ```
 
 ## Core Components
@@ -206,6 +210,24 @@ All return Polars expressions for use in `preprocess()`:
 
 **`walk_forward_analysis(strategy_class, data, param_grid, train_periods, test_periods, ...)`** — walk-forward optimization with train/test splits, returns DataFrame of fold results.
 
+### Visualization
+
+Requires `plotly` (optional dependency): `pip install polarbtest[plotting]`
+
+**`plot_backtest(engine, ...)`** — Multi-panel chart with:
+- Price chart (candlestick if OHLC available, line otherwise)
+- Trade entry/exit markers (arrows for entries, x for exits, color-coded by direction/PnL)
+- Indicator overlays via `indicators=["sma_20"]`
+- Band overlays via `bands=[("bb_upper", "bb_lower")]`
+- Volume bars subplot (auto-detected)
+- Equity curve subplot
+- Drawdown subplot
+- Save to HTML via `save_html="backtest.html"`
+
+**`plot_returns_distribution(engine, ...)`** — Histogram of daily returns with mean line.
+
+All functions return `plotly.graph_objects.Figure` for further customization.
+
 ## Data Format
 
 **Single asset (minimum):**
@@ -232,10 +254,11 @@ results = backtest(MyStrategy, data, params={...})
 
 ## Test Coverage
 
-189 tests passing. Test files:
+207 tests passing. Test files:
 - test_core.py, test_indicators.py, test_orders.py, test_limit_orders.py
 - test_trades.py, test_runner.py, test_warmup.py
 - test_take_profit.py, test_trailing_stop.py, test_bracket_orders.py
 - test_order_expiry.py, test_mae_mfe.py
 - test_stop_orders.py (STOP and STOP_LIMIT order execution)
 - test_short_selling.py (short selling, borrow costs, bracket pending fills)
+- test_plotting.py (plot_backtest, plot_returns_distribution, trade markers, HTML export)

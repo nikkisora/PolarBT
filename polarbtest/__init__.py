@@ -22,6 +22,11 @@ from polarbtest.orders import Order, OrderStatus, OrderType
 from polarbtest.runner import backtest, backtest_batch
 from polarbtest.trades import Trade, TradeTracker
 
+try:
+    from polarbtest import plotting
+except ImportError:
+    plotting = None  # type: ignore[assignment]
+
 __version__ = "0.1.0"
 __all__ = [
     "Strategy",

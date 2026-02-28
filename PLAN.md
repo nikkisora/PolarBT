@@ -12,15 +12,15 @@ Remaining work organized by priority. Each item is a self-contained task.
 - [x] Add short selling support to Portfolio — negative positions with proper cash handling, position reversals
 - [x] Add borrow costs for short positions (daily rate deducted from cash, configurable via `borrow_rate` parameter)
 
-## 2. Visualization
+## 2. Visualization ✓ COMPLETE
 
-- [ ] Create `polarbtest/plotting/` module with plotly as optional dependency
-- [ ] Implement `plot_backtest()` — price chart + equity curve + drawdown subplot
-- [ ] Add trade entry/exit markers (arrows) on price chart
-- [ ] Add indicator overlay helpers (lines, bands)
-- [ ] Add volume bars subplot
-- [ ] Support saving charts to HTML
-- [ ] Add returns distribution histogram
+- [x] Create `polarbtest/plotting/` module with plotly as optional dependency
+- [x] Implement `plot_backtest()` — price chart + equity curve + drawdown subplot
+- [x] Add trade entry/exit markers (arrows) on price chart
+- [x] Add indicator overlay helpers (lines, bands)
+- [x] Add volume bars subplot
+- [x] Support saving charts to HTML
+- [x] Add returns distribution histogram
 
 ## 3. Enhanced Metrics
 
@@ -132,8 +132,8 @@ Remaining work organized by priority. Each item is a self-contained task.
 
 ## Priority Order
 
-1. **Core Gaps** — STOP/STOP_LIMIT execution, short selling
-2. **Visualization** — essential for strategy development
+1. **Core Gaps** — STOP/STOP_LIMIT execution, short selling ✓
+2. **Visualization** — essential for strategy development ✓
 3. **Documentation & Examples** — usability
 4. **Enhanced Metrics** — quick wins
 5. **Position Sizing** — important for realistic backtesting
