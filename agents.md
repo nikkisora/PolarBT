@@ -59,7 +59,7 @@ After adding a feature analyze the code changes based on the following pillars:
 
 After finishing implementing, testing and reviewing the feature, always:
 1. Run ruff and mypy
-2. Update `TODO.md`, `IMPLEMENTATION.md`, `README.md` and examples if needed
+2. Update `DESCRIPTION.md`, `PLAN.md` and examples if needed
 3. Put the summary of your work in the archive folder
 
 ## Module Structure
@@ -67,6 +67,8 @@ After finishing implementing, testing and reviewing the feature, always:
 ```
 polarbtest/
 ├── core.py           # Portfolio, Strategy, Engine, BacktestContext
+├── orders.py         # Order, OrderType, OrderStatus
+├── trades.py         # Trade, TradeTracker
 ├── indicators.py     # Technical indicators as Polars expressions
 ├── metrics.py        # Performance metrics calculation
 └── runner.py         # Parallel execution and optimization
@@ -74,8 +76,8 @@ polarbtest/
 
 ## Additional Documentation
 
-- See `IMPLEMENTATION.md` for detailed API reference, code patterns, and troubleshooting
-- See `README.md` for installation and quick start guide
+- See `DESCRIPTION.md` for library description, API reference, and current capabilities
+- See `PLAN.md` for remaining work and development roadmap
 - Check source code docstrings for detailed method documentation
 
 # Code style
