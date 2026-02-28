@@ -52,13 +52,13 @@ Remaining work organized by priority. Each item is a self-contained task.
 - [x] Add `daily_loss_limit` parameter (halt trading at X% daily loss)
 - [x] Enforce limits in order execution path
 
-## 6. Commission Models
+## 6. Commission Models ✓ COMPLETE
 
-- [ ] Create `CommissionModel` base class
-- [ ] Implement `MakerTakerCommission` — different rates for maker/taker
-- [ ] Implement `TieredCommission` — volume-based tiers
-- [ ] Implement `CustomCommission` — user-provided callable
-- [ ] Update Portfolio to accept `CommissionModel` instances alongside current float/tuple
+- [x] Create `CommissionModel` base class
+- [x] Implement `MakerTakerCommission` — different rates for maker/taker
+- [x] Implement `TieredCommission` — volume-based tiers
+- [x] Implement `CustomCommission` — user-provided callable
+- [x] Update Portfolio to accept `CommissionModel` instances alongside current float/tuple
 
 ## 7. Margin & Leverage
 
@@ -118,6 +118,7 @@ Remaining work organized by priority. Each item is a self-contained task.
 
 - [ ] Implement Monte Carlo simulation on trade results
 - [ ] Implement look-ahead bias detection (scan for future data leaks in preprocess)
+- [ ] Implement permutation test by shuffling market data
 
 ## 12. Documentation & Examples
 

@@ -10,6 +10,14 @@ Features:
 """
 
 from polarbtest import indicators, metrics
+from polarbtest.commissions import (
+    CommissionModel,
+    CustomCommission,
+    FixedPlusPercentCommission,
+    MakerTakerCommission,
+    PercentCommission,
+    TieredCommission,
+)
 from polarbtest.core import (
     BacktestContext,
     Engine,
@@ -60,4 +68,10 @@ __all__ = [
     "KellySizer",
     "VolatilitySizer",
     "MaxPositionSizer",
+    "CommissionModel",
+    "PercentCommission",
+    "FixedPlusPercentCommission",
+    "MakerTakerCommission",
+    "TieredCommission",
+    "CustomCommission",
 ]

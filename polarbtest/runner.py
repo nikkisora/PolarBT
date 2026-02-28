@@ -12,6 +12,7 @@ from typing import Any
 
 import polars as pl
 
+from polarbtest.commissions import CommissionModel
 from polarbtest.core import Engine, Strategy
 
 
@@ -38,7 +39,7 @@ def backtest(
     data: pl.DataFrame | dict[str, pl.DataFrame],
     params: dict[str, Any] | None = None,
     initial_cash: float = 100_000.0,
-    commission: float | tuple[float, float] = 0.001,
+    commission: float | tuple[float, float] | CommissionModel = 0.001,
     slippage: float = 0.0005,
     price_columns: dict[str, str] | None = None,
     warmup: int | str = "auto",
@@ -146,7 +147,7 @@ def _run_backtest_worker(
         pl.DataFrame | dict[str, pl.DataFrame],
         dict[str, Any],
         float,
-        float | tuple[float, float],
+        float | tuple[float, float] | CommissionModel,
         float,
         dict[str, str] | None,
         int | str,
@@ -227,7 +228,7 @@ def backtest_batch(
     data: pl.DataFrame | dict[str, pl.DataFrame],
     param_sets: list[dict[str, Any]],
     initial_cash: float = 100_000.0,
-    commission: float | tuple[float, float] = 0.001,
+    commission: float | tuple[float, float] | CommissionModel = 0.001,
     slippage: float = 0.0005,
     price_columns: dict[str, str] | None = None,
     warmup: int | str = "auto",
@@ -345,7 +346,7 @@ def optimize(
     objective: str = "sharpe_ratio",
     maximize: bool = True,
     initial_cash: float = 100_000.0,
-    commission: float | tuple[float, float] = 0.001,
+    commission: float | tuple[float, float] | CommissionModel = 0.001,
     slippage: float = 0.0005,
     price_columns: dict[str, str] | None = None,
     warmup: int | str = "auto",
@@ -446,7 +447,7 @@ def walk_forward_analysis(
     objective: str = "sharpe_ratio",
     maximize: bool = True,
     initial_cash: float = 100_000.0,
-    commission: float | tuple[float, float] = 0.001,
+    commission: float | tuple[float, float] | CommissionModel = 0.001,
     slippage: float = 0.0005,
     price_columns: dict[str, str] | None = None,
     warmup: int | str = "auto",

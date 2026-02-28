@@ -16,6 +16,7 @@ from typing import Any
 
 import polars as pl
 
+from polarbtest.commissions import CommissionModel, make_commission_model
 from polarbtest.orders import Order, OrderStatus, OrderType
 from polarbtest.trades import TradeTracker
 
@@ -240,7 +241,7 @@ class Portfolio:
     def __init__(
         self,
         initial_cash: float = 100_000.0,
-        commission: float | tuple[float, float] = 0.0,
+        commission: float | tuple[float, float] | CommissionModel = 0.0,
         slippage: float = 0.0,
         order_delay: int = 0,
         bars_per_day: float | None = None,
@@ -255,8 +256,10 @@ class Portfolio:
 
         Args:
             initial_cash: Starting cash balance
-            commission: Commission as a percentage (e.g., 0.001 = 0.1%) or tuple of (fixed_commission, percent_commission)
-                       For example: 0.001 means 0.1% per trade, (5.0, 0.001) means $5 + 0.1% per trade
+            commission: Commission specification. Accepts a percentage float (e.g., 0.001 = 0.1%),
+                       a tuple of (fixed, percent) (e.g., (5.0, 0.001) = $5 + 0.1%), or a
+                       CommissionModel instance for advanced models (MakerTakerCommission,
+                       TieredCommission, CustomCommission, etc.)
             slippage: Slippage rate as a fraction (e.g., 0.0005 = 0.05%)
             order_delay: Number of bars to delay order execution (0 = immediate, 1 = next bar)
             bars_per_day: Number of bars in a trading day (used for day order expiry fallback).
@@ -285,10 +288,16 @@ class Portfolio:
         self.initial_cash = initial_cash
         self.cash = initial_cash
 
-        # Parse commission format
+        # Parse commission into a CommissionModel
+        self.commission_model = make_commission_model(commission)
+
+        # Keep legacy attributes for backward compatibility
         if isinstance(commission, tuple):
             self.commission_fixed = commission[0]
             self.commission_percent = commission[1]
+        elif isinstance(commission, CommissionModel):
+            self.commission_fixed = 0.0
+            self.commission_percent = 0.0
         else:
             self.commission_fixed = 0.0
             self.commission_percent = commission
@@ -636,7 +645,7 @@ class Portfolio:
 
         # Recalculate commission on new gross
         old_commission = order.commission_paid
-        new_commission = self.commission_fixed + (new_gross * self.commission_percent)
+        new_commission = self.commission_model.calculate(size, new_exec_price)
 
         if order.is_buy():
             # Buying: cash was decreased by old cost, needs to be decreased by new cost
@@ -894,10 +903,9 @@ class Portfolio:
             order.is_sell() and current_position > 0 and abs(order.size) > current_position
         )
 
-        # Calculate costs — charge fixed commission twice for reversals
+        # Calculate costs via commission model
         gross_cost = abs(order.size) * execution_price
-        num_fixed = 2 if is_reversal else 1
-        commission_cost = self.commission_fixed * num_fixed + (gross_cost * self.commission_percent)
+        commission_cost = self.commission_model.calculate(abs(order.size), execution_price, is_reversal)
 
         if order.is_buy():
             if current_position < 0:
@@ -1906,7 +1914,7 @@ class Engine:
         strategy: Strategy,
         data: pl.DataFrame | dict[str, pl.DataFrame],
         initial_cash: float = 100_000.0,
-        commission: float | tuple[float, float] = 0.0,
+        commission: float | tuple[float, float] | CommissionModel = 0.0,
         slippage: float = 0.0,
         price_columns: dict[str, str] | None = None,
         warmup: int | str = "auto",
@@ -1925,8 +1933,8 @@ class Engine:
             strategy: Strategy instance to backtest
             data: Polars DataFrame with price data OR dict mapping asset names to DataFrames
             initial_cash: Starting cash balance
-            commission: Commission as a percentage (e.g., 0.001 = 0.1%) or tuple of (fixed_commission, percent_commission)
-                       For example: 0.001 means 0.1% per trade, (5.0, 0.001) means $5 + 0.1% per trade
+            commission: Commission specification. Accepts a percentage float, a (fixed, percent) tuple,
+                       or a CommissionModel instance
             slippage: Slippage rate as fraction
             price_columns: Dict mapping asset names to price columns
                           (default: auto-detected for dict input, {"asset": "close"} for single DataFrame)

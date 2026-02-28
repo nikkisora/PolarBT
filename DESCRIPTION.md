@@ -31,6 +31,7 @@ polarbtest/
 ├── trades.py         # Trade, TradeTracker
 ├── indicators.py     # Technical indicators as Polars expressions
 ├── metrics.py        # Performance metrics
+├── commissions.py    # Commission models (CommissionModel, MakerTaker, Tiered, Custom)
 ├── sizers.py         # Position sizing strategies
 ├── runner.py         # backtest(), backtest_batch(), optimize(), walk_forward_analysis()
 └── plotting/
@@ -117,6 +118,7 @@ Manages cash, positions, orders, and risk management.
 **Commission:**
 - Percentage only: `commission=0.001` (0.1% per trade)
 - Fixed + percentage: `commission=(5.0, 0.001)` ($5 + 0.1% per trade)
+- `CommissionModel` instances for advanced models (see Commission Models below)
 - Position reversals (long→short, short→long) charge fixed commission twice (one for the close, one for the open)
 
 **Risk Limits:**
@@ -174,6 +176,36 @@ from polarbtest import FixedRiskSizer
 
 sizer = FixedRiskSizer(risk_percent=0.02)
 ctx.portfolio.order_with_sizer("BTC", sizer, direction=1.0, stop_distance=500.0)
+```
+
+### Commission Models
+
+`polarbtest/commissions.py` provides a `CommissionModel` base class and implementations for flexible fee calculation. All models are accepted by Portfolio, Engine, and runner functions via the `commission` parameter alongside legacy float/tuple formats.
+
+| Model | Description |
+|---|---|
+| `PercentCommission(rate)` | Percentage-only (equivalent to `commission=0.001`) |
+| `FixedPlusPercentCommission(fixed, percent)` | Fixed + percentage (equivalent to `commission=(5.0, 0.001)`) |
+| `MakerTakerCommission(maker_rate, taker_rate, is_maker, fixed)` | Different rates for maker/taker orders |
+| `TieredCommission(tiers, fixed)` | Volume-based tiered rates with cumulative tracking |
+| `CustomCommission(func)` | User-provided callable `(size, price, is_reversal) -> float` |
+
+```python
+from polarbtest import TieredCommission, MakerTakerCommission
+
+# Volume-based tiers: lower rates at higher volume
+engine = Engine(
+    strategy=my_strategy,
+    data=df,
+    commission=TieredCommission(tiers=[(0, 0.001), (100_000, 0.0008), (1_000_000, 0.0005)]),
+)
+
+# Maker/taker model
+engine = Engine(
+    strategy=my_strategy,
+    data=df,
+    commission=MakerTakerCommission(maker_rate=0.0002, taker_rate=0.001),
+)
 ```
 
 ### Engine
@@ -293,7 +325,7 @@ results = backtest(MyStrategy, data, params={...})
 
 ## Test Coverage
 
-312 tests passing. Test files:
+345 tests passing. Test files:
 - test_core.py, test_indicators.py, test_orders.py, test_limit_orders.py
 - test_trades.py, test_runner.py, test_warmup.py
 - test_take_profit.py, test_trailing_stop.py, test_bracket_orders.py
@@ -304,4 +336,5 @@ results = backtest(MyStrategy, data, params={...})
 - test_enhanced_metrics.py (ulcer index, tail ratio, information ratio, alpha/beta, drawdown durations, monthly returns, trade-level metrics)
 - test_sizers.py (FixedSizer, PercentSizer, FixedRiskSizer, KellySizer, VolatilitySizer, MaxPositionSizer, order_with_sizer integration)
 - test_risk_limits.py (max_position_size, max_total_exposure, max_drawdown_stop, daily_loss_limit, Engine integration, trading_halted property)
+- test_commissions.py (CommissionModel, PercentCommission, FixedPlusPercentCommission, MakerTakerCommission, TieredCommission, CustomCommission, Engine integration, backward compatibility)
 - test_bugfixes.py (SL/TP/trailing stop fill prices, reversal commission, position increase tracking, order_target_percent slippage, monthly returns, warmup equity, daily_win_rate rename)
