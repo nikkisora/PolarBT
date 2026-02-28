@@ -113,18 +113,21 @@ class TestPortfolio:
         assert order.status == OrderStatus.REJECTED
         assert portfolio.get_position("BTC") == 0.0
 
-    def test_insufficient_shares(self):
-        """Test that sells fail with insufficient shares."""
+    def test_short_selling(self):
+        """Test that selling without holding opens a short position."""
         portfolio = Portfolio(initial_cash=100_000)
         portfolio.update_prices({"BTC": 50_000})
 
-        # Try to sell BTC we don't have
+        # Sell BTC we don't have — opens a short position
         order_id = portfolio.order("BTC", -1.0)
         assert order_id is not None
         order = portfolio.get_order(order_id)
         from polarbtest.orders import OrderStatus
 
-        assert order.status == OrderStatus.REJECTED
+        assert order.status == OrderStatus.FILLED
+        assert portfolio.get_position("BTC") == -1.0
+        # Cash increases by sale proceeds minus commission
+        assert portfolio.cash > 100_000
 
     def test_fixed_commission(self):
         """Test fixed commission only."""

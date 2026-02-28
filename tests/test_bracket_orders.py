@@ -1,7 +1,5 @@
 """Tests for bracket order functionality (OCO orders)."""
 
-import pytest
-
 from polarbtest.core import Portfolio
 
 
@@ -99,10 +97,9 @@ class TestBracketOrders:
         assert portfolio.get_stop_loss("BTC") is None
         assert portfolio.get_take_profit("BTC") is None
 
-    @pytest.mark.skip(reason="Short selling not yet supported")
     def test_bracket_short_position(self):
         """Test bracket order for short positions."""
-        portfolio = Portfolio(initial_cash=10000)
+        portfolio = Portfolio(initial_cash=100000)
 
         # Enter short position at 50000
         portfolio.update_prices(

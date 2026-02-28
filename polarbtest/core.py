@@ -244,6 +244,7 @@ class Portfolio:
         slippage: float = 0.0,
         order_delay: int = 0,
         bars_per_day: int | None = None,
+        borrow_rate: float = 0.0,
     ):
         """
         Initialize a new portfolio.
@@ -258,6 +259,10 @@ class Portfolio:
                          For example: 390 for 1-min bars, 7.5 for 1-hour bars, 1 for daily bars.
                          If None, day orders will try to use timestamps to detect day boundaries,
                          or fall back to bars_valid parameter.
+            borrow_rate: Annual borrow rate for short positions (e.g., 0.02 = 2% per year).
+                        Cost is deducted from cash each bar based on the short position value.
+                        Daily rate = borrow_rate / 252 (trading days). For intraday bars,
+                        set bars_per_day so the cost is spread across bars within a day.
         """
         self.initial_cash = initial_cash
         self.cash = initial_cash
@@ -273,6 +278,7 @@ class Portfolio:
         self.slippage = slippage
         self.order_delay = order_delay
         self.bars_per_day = bars_per_day
+        self.borrow_rate = borrow_rate
 
         # Asset positions: {asset_name: quantity}
         self.positions: dict[str, float] = defaultdict(float)
@@ -325,6 +331,10 @@ class Portfolio:
         self._current_bar = bar_index
         self._current_timestamp = timestamp
 
+        # Deduct borrow costs for short positions
+        if self.borrow_rate > 0:
+            self._deduct_borrow_costs()
+
         # Update MAE/MFE for open positions
         for asset in self.trade_tracker.open_positions:
             if asset in prices:
@@ -344,6 +354,25 @@ class Portfolio:
 
         # Execute pending orders
         self._execute_pending_orders()
+
+    def _deduct_borrow_costs(self) -> None:
+        """Deduct borrow costs for short positions.
+
+        Daily rate = borrow_rate / 252. For intraday bars, the daily rate is
+        further divided by bars_per_day so the total daily cost is consistent.
+        """
+        daily_rate = self.borrow_rate / 252.0
+        if self.bars_per_day is not None and self.bars_per_day > 0:
+            bar_rate = daily_rate / self.bars_per_day
+        else:
+            bar_rate = daily_rate
+
+        for asset, qty in self.positions.items():
+            if qty < 0:
+                price = self._current_prices.get(asset, 0.0)
+                short_value = abs(qty) * price
+                borrow_cost = short_value * bar_rate
+                self.cash -= borrow_cost
 
     def get_value(self) -> float:
         """
@@ -458,13 +487,21 @@ class Portfolio:
         For buy limit: low must be <= limit_price
         For sell limit: high must be >= limit_price
 
+        Works for both LIMIT orders and triggered STOP_LIMIT orders.
+
         Args:
             order: The limit order to check
 
         Returns:
             True if order can be filled, False otherwise
         """
-        if order.order_type != OrderType.LIMIT or order.limit_price is None:
+        is_limit = order.order_type == OrderType.LIMIT
+        is_triggered_stop_limit = order.order_type == OrderType.STOP_LIMIT and order.triggered
+
+        if not is_limit and not is_triggered_stop_limit:
+            return True
+
+        if order.limit_price is None:
             return True
 
         ohlc = self._current_ohlc.get(order.asset)
@@ -476,9 +513,37 @@ class Portfolio:
         else:
             return ohlc.get("high", 0) >= order.limit_price
 
+    def _is_stop_triggered(self, order: Order) -> bool:
+        """
+        Check if a stop order's trigger price has been hit.
+
+        For buy stops: triggered when high >= stop_price (breakout entry)
+        For sell stops: triggered when low <= stop_price (breakdown entry)
+
+        Args:
+            order: The STOP or STOP_LIMIT order to check
+
+        Returns:
+            True if stop price was hit, False otherwise
+        """
+        if order.stop_price is None:
+            return False
+
+        ohlc = self._current_ohlc.get(order.asset, {})
+        high = ohlc.get("high", self._current_prices.get(order.asset, 0.0))
+        low = ohlc.get("low", self._current_prices.get(order.asset, float("inf")))
+
+        if order.is_buy():
+            return high >= order.stop_price
+        else:
+            return low <= order.stop_price
+
     def _try_execute_order(self, order: Order) -> bool:
         """
         Try to execute an order.
+
+        Handles MARKET, LIMIT, STOP, and STOP_LIMIT order types.
+        Supports both long and short positions.
 
         Args:
             order: Order to execute
@@ -490,13 +555,44 @@ class Portfolio:
             order.mark_rejected()
             return False
 
+        # Handle STOP orders: check if stop price is triggered, then execute as market
+        if order.order_type == OrderType.STOP and not self._is_stop_triggered(order):
+            return False
+
+        # Handle STOP_LIMIT orders: two-phase execution
+        if order.order_type == OrderType.STOP_LIMIT:
+            if not order.triggered:
+                # Phase 1: Check if stop price is triggered
+                if not self._is_stop_triggered(order):
+                    return False
+                # Stop triggered — convert to limit order behavior
+                order.triggered = True
+                # Now check if the limit can also fill on this same bar
+                # (fall through to limit check below)
+
+            # Phase 2: Behave as a limit order
+            if order.limit_price is None:
+                order.mark_rejected()
+                return False
+            if not self._can_fill_limit_order(order):
+                return False
+
         # Check if limit order can be filled
         if order.order_type == OrderType.LIMIT and not self._can_fill_limit_order(order):
             return False
 
         # Determine execution price
-        if order.order_type == OrderType.LIMIT and order.limit_price is not None:
-            price: float = order.limit_price
+        if order.order_type == OrderType.STOP and order.stop_price is not None:
+            price: float = order.stop_price
+        elif order.order_type == OrderType.LIMIT or (order.order_type == OrderType.STOP_LIMIT and order.triggered):
+            if order.limit_price is not None:
+                price = order.limit_price
+            else:
+                price_value = self._current_prices.get(order.asset)
+                if price_value is None:
+                    order.mark_rejected()
+                    return False
+                price = price_value
         else:
             price_value = self._current_prices.get(order.asset)
             if price_value is None:
@@ -514,28 +610,62 @@ class Portfolio:
         # Calculate costs
         gross_cost = abs(order.size) * execution_price
         commission_cost = self.commission_fixed + (gross_cost * self.commission_percent)
-        total_cost = gross_cost + commission_cost
 
         # Track old position for trade tracking
         old_position = self.get_position(order.asset)
 
-        # Check if we have enough cash (for buys) or shares (for sells)
+        # Determine if this is opening/increasing a short position
+        current_position = self.positions.get(order.asset, 0.0)
+
         if order.is_buy():
-            if total_cost > self.cash:
-                order.mark_rejected()
-                return False
-            self.cash -= total_cost
+            if current_position < 0:
+                # Covering a short position (partially or fully)
+                cover_size = min(abs(order.size), abs(current_position))
+                new_long_size = abs(order.size) - cover_size
+
+                # Cost to cover: buy back shares at execution_price
+                cover_cost = cover_size * execution_price + commission_cost
+                # Cost to open new long (if any)
+                new_long_cost = new_long_size * execution_price
+                total_cost = cover_cost + new_long_cost
+
+                if total_cost > self.cash:
+                    order.mark_rejected()
+                    return False
+                self.cash -= total_cost
+            else:
+                # Opening or increasing a long position
+                total_cost = gross_cost + commission_cost
+                if total_cost > self.cash:
+                    order.mark_rejected()
+                    return False
+                self.cash -= total_cost
+
             self.positions[order.asset] += order.size
         else:
-            if abs(order.size) > self.positions.get(order.asset, 0):
-                order.mark_rejected()
-                return False
-            self.cash += gross_cost - commission_cost
+            # Selling: could be closing a long, or opening/increasing a short
+            sell_size = abs(order.size)
+
+            if current_position > 0 and sell_size <= current_position:
+                # Closing or reducing a long position — receive proceeds
+                self.cash += gross_cost - commission_cost
+            elif current_position > 0 and sell_size > current_position:
+                # Closing long AND opening short in one order
+                # Proceeds from closing long
+                long_close_proceeds = current_position * execution_price - commission_cost
+                # Short sale proceeds for the remainder
+                short_size = sell_size - current_position
+                short_proceeds = short_size * execution_price
+                self.cash += long_close_proceeds + short_proceeds
+            else:
+                # Opening or increasing a short position — receive sale proceeds
+                self.cash += gross_cost - commission_cost
+
             self.positions[order.asset] += order.size
 
-            # Clean up zero positions
-            if abs(self.positions[order.asset]) < 1e-10:
-                del self.positions[order.asset]
+        # Clean up zero positions
+        if order.asset in self.positions and abs(self.positions[order.asset]) < 1e-10:
+            del self.positions[order.asset]
 
         # Mark order as filled
         slippage_cost = abs(order.size) * abs(execution_price - price)
@@ -546,6 +676,12 @@ class Portfolio:
             commission=commission_cost,
             slippage=slippage_cost,
         )
+
+        # Apply bracket order SL/TP if this entry order had bracket metadata
+        if order.bracket_stop_loss is not None:
+            self.set_stop_loss(order.asset, stop_price=order.bracket_stop_loss)
+        if order.bracket_take_profit is not None:
+            self.set_take_profit(order.asset, target_price=order.bracket_take_profit)
 
         # Update trade tracker
         new_position = self.get_position(order.asset)
@@ -643,6 +779,10 @@ class Portfolio:
             order_id if order was placed, None if rejected
         """
         if quantity == 0:
+            return None
+
+        # Reject STOP/STOP_LIMIT orders without a stop_price
+        if order_type in (OrderType.STOP, OrderType.STOP_LIMIT) and stop_price is None:
             return None
 
         # Determine order type if not specified
@@ -1294,9 +1434,10 @@ class Portfolio:
 
             return {"entry": entry_order_id, "stop_loss": sl_id, "take_profit": tp_id}
 
-        # Entry not yet filled - return entry order ID only
-        # User should manually set stops after entry fills
-        # TODO: Implement automatic stop placement when pending entry order fills
+        # Entry not yet filled — store bracket metadata on the order
+        # SL/TP will be applied automatically when the order fills (see _try_execute_order)
+        entry_order.bracket_stop_loss = stop_loss
+        entry_order.bracket_take_profit = take_profit
         return {"entry": entry_order_id, "stop_loss": None, "take_profit": None}
 
     def get_trades(self) -> pl.DataFrame:
@@ -1435,6 +1576,8 @@ class Engine:
         price_columns: dict[str, str] | None = None,
         warmup: int | str = "auto",
         order_delay: int = 0,
+        borrow_rate: float = 0.0,
+        bars_per_day: int | None = None,
     ):
         """
         Initialize the backtesting engine.
@@ -1451,11 +1594,15 @@ class Engine:
             warmup: Number of bars to skip before executing strategy, or "auto" to automatically
                    detect when all indicators are ready (default "auto")
             order_delay: Number of bars to delay order execution (default 0, max realism is 1)
+            borrow_rate: Annual borrow rate for short positions (e.g., 0.02 = 2% per year)
+            bars_per_day: Number of bars in a trading day (used for day order expiry and borrow cost calculation)
         """
         self.strategy = strategy
         self.initial_cash = initial_cash
         self.commission = commission
         self.slippage = slippage
+        self.borrow_rate = borrow_rate
+        self.bars_per_day = bars_per_day
 
         # Validate warmup parameter
         if isinstance(warmup, str):
@@ -1553,6 +1700,8 @@ class Engine:
             commission=self.commission,
             slippage=self.slippage,
             order_delay=self.order_delay,
+            borrow_rate=self.borrow_rate,
+            bars_per_day=self.bars_per_day,
         )
 
         # Preprocess data using strategy

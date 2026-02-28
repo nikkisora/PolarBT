@@ -1,6 +1,5 @@
 """Tests for take-profit order functionality."""
 
-
 from polarbtest.core import Portfolio
 
 
@@ -85,12 +84,27 @@ class TestTakeProfit:
 
     def test_take_profit_triggers_short_position(self):
         """Test that take-profit triggers when price falls (short position)."""
-        # NOTE: Current implementation doesn't support naked short selling
-        # This test verifies the logic would work if short positions were supported
-        # Skipping for now - will be enabled when short selling is implemented
-        import pytest
+        portfolio = Portfolio(initial_cash=100000)
 
-        pytest.skip("Short selling not yet supported in current implementation")
+        # Enter short position at 50000
+        portfolio.update_prices(
+            {"BTC": 50000}, bar_index=0, ohlc_data={"BTC": {"open": 50000, "high": 50000, "low": 50000, "close": 50000}}
+        )
+        portfolio.order("BTC", -0.1)
+        assert portfolio.get_position("BTC") == -0.1
+
+        # Set take-profit at 45000 (below entry for short)
+        portfolio.set_take_profit("BTC", target_price=45000)
+        assert portfolio.get_take_profit("BTC") == 45000
+
+        # Price falls to 44000 (low crosses take-profit)
+        portfolio.update_prices(
+            {"BTC": 44000}, bar_index=1, ohlc_data={"BTC": {"open": 48000, "high": 49000, "low": 44000, "close": 44500}}
+        )
+
+        # Position should be closed
+        assert portfolio.get_position("BTC") == 0.0
+        assert portfolio.get_take_profit("BTC") is None
 
     def test_remove_take_profit(self):
         """Test removing take-profit."""

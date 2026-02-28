@@ -78,7 +78,7 @@ Manages cash, positions, orders, and risk management.
 - `close_position(asset)` / `close_all_positions()`
 - `order_day(asset, quantity, limit_price=None, bars_valid=None)` — day order with auto-expiry
 - `order_gtc(asset, quantity, limit_price=None)` — good-till-cancelled
-- `order_bracket(asset, quantity, stop_loss=None, take_profit=None, ...)` — entry + SL + TP (OCO)
+- `order_bracket(asset, quantity, stop_loss=None, take_profit=None, ...)` — entry + SL + TP (OCO). SL/TP are set automatically when a pending entry order fills
 
 **Risk Management:**
 - `set_stop_loss(asset, stop_price=None, stop_pct=None)`
@@ -97,6 +97,18 @@ Manages cash, positions, orders, and risk management.
 - `get_trades()` — completed trades as DataFrame
 - `get_trade_stats()` — aggregate trade statistics
 
+**Short Selling:**
+- Negative quantities open short positions (e.g., `order("BTC", -1.0)`)
+- Short positions receive cash upfront from the sale
+- Covering (buying back) deducts cash; position goes to zero
+- Position reversals (long→short, short→long) handled in a single order
+- All risk management (SL, TP, trailing stop, bracket orders) works for short positions
+
+**Borrow Costs:**
+- `borrow_rate=0.02` (2% annual) — deducted per bar for short positions
+- Daily rate = `borrow_rate / 252`. For intraday bars, further divided by `bars_per_day`
+- Cost based on current market value of the short position
+
 **Commission:**
 - Percentage only: `commission=0.001` (0.1% per trade)
 - Fixed + percentage: `commission=(5.0, 0.001)` ($5 + 0.1% per trade)
@@ -112,7 +124,8 @@ Manages cash, positions, orders, and risk management.
 **Order Types** (OrderType enum):
 - `MARKET` — immediate execution at current price
 - `LIMIT` — execute at limit price or better (uses OHLC for fill detection)
-- `STOP` / `STOP_LIMIT` — defined in enum but execution not fully wired
+- `STOP` — triggers when price crosses stop_price (buy: high >= stop, sell: low <= stop), then executes at stop_price
+- `STOP_LIMIT` — two-phase: triggers at stop_price, then fills at limit_price (may remain pending if limit not reached)
 
 **Order Statuses**: PENDING, FILLED, PARTIAL, CANCELLED, REJECTED, EXPIRED
 
@@ -219,8 +232,10 @@ results = backtest(MyStrategy, data, params={...})
 
 ## Test Coverage
 
-152 tests passing, 2 skipped (short selling edge cases). Test files:
+189 tests passing. Test files:
 - test_core.py, test_indicators.py, test_orders.py, test_limit_orders.py
 - test_trades.py, test_runner.py, test_warmup.py
 - test_take_profit.py, test_trailing_stop.py, test_bracket_orders.py
 - test_order_expiry.py, test_mae_mfe.py
+- test_stop_orders.py (STOP and STOP_LIMIT order execution)
+- test_short_selling.py (short selling, borrow costs, bracket pending fills)

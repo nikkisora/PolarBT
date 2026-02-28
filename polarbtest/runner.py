@@ -43,6 +43,8 @@ def backtest(
     price_columns: dict[str, str] | None = None,
     warmup: int | str = "auto",
     order_delay: int = 0,
+    borrow_rate: float = 0.0,
+    bars_per_day: int | None = None,
 ) -> dict[str, Any]:
     """
     Run a single backtest.
@@ -62,6 +64,8 @@ def backtest(
         warmup: Number of bars to skip before executing strategy, or "auto" to automatically
                detect when all indicators are ready (default "auto")
         order_delay: Number of bars to delay order execution (default 0)
+        borrow_rate: Annual borrow rate for short positions (default 0.0)
+        bars_per_day: Number of bars in a trading day (default None)
 
     Returns:
         Dictionary containing backtest results and metrics
@@ -101,6 +105,8 @@ def backtest(
             price_columns=price_columns,
             warmup=warmup,
             order_delay=order_delay,
+            borrow_rate=borrow_rate,
+            bars_per_day=bars_per_day,
         )
 
         results = engine.run()
@@ -133,13 +139,16 @@ def _run_backtest_worker(
         dict[str, str] | None,
         int | str,
         int,
+        float,
+        int | None,
     ],
 ) -> BacktestResult:
     """
     Worker function for parallel backtest execution.
 
     Args:
-        args: Tuple of (strategy_class, data, params, initial_cash, commission, slippage, price_columns, warmup, order_delay)
+        args: Tuple of (strategy_class, data, params, initial_cash, commission, slippage,
+              price_columns, warmup, order_delay, borrow_rate, bars_per_day)
 
     Returns:
         BacktestResult object
@@ -154,6 +163,8 @@ def _run_backtest_worker(
         price_columns,
         warmup,
         order_delay,
+        borrow_rate,
+        bars_per_day,
     ) = args
 
     try:
@@ -167,6 +178,8 @@ def _run_backtest_worker(
             price_columns=price_columns,
             warmup=warmup,
             order_delay=order_delay,
+            borrow_rate=borrow_rate,
+            bars_per_day=bars_per_day,
         )
 
         return BacktestResult(
@@ -196,6 +209,8 @@ def backtest_batch(
     order_delay: int = 0,
     n_jobs: int | None = None,
     verbose: bool = True,
+    borrow_rate: float = 0.0,
+    bars_per_day: int | None = None,
 ) -> pl.DataFrame:
     """
     Run multiple backtests in parallel.
@@ -215,6 +230,8 @@ def backtest_batch(
         order_delay: Number of bars to delay order execution (default 0)
         n_jobs: Number of parallel jobs (default: all CPUs)
         verbose: Print progress (default True)
+        borrow_rate: Annual borrow rate for short positions (default 0.0)
+        bars_per_day: Number of bars in a trading day (default None)
 
     Returns:
         Polars DataFrame with results for each parameter set
@@ -248,6 +265,8 @@ def backtest_batch(
             price_columns,
             warmup,
             order_delay,
+            borrow_rate,
+            bars_per_day,
         )
         for params in param_sets
     ]
@@ -296,6 +315,8 @@ def optimize(
     order_delay: int = 0,
     n_jobs: int | None = None,
     verbose: bool = True,
+    borrow_rate: float = 0.0,
+    bars_per_day: int | None = None,
 ) -> dict[str, Any]:
     """
     Grid search optimization for strategy parameters.
@@ -314,6 +335,8 @@ def optimize(
         order_delay: Number of bars to delay order execution (default 0)
         n_jobs: Number of parallel jobs
         verbose: Print progress
+        borrow_rate: Annual borrow rate for short positions (default 0.0)
+        bars_per_day: Number of bars in a trading day (default None)
 
     Returns:
         Dictionary with best parameters and results
@@ -352,6 +375,8 @@ def optimize(
         order_delay=order_delay,
         n_jobs=n_jobs,
         verbose=verbose,
+        borrow_rate=borrow_rate,
+        bars_per_day=bars_per_day,
     )
 
     # Find best result
@@ -379,6 +404,8 @@ def walk_forward_analysis(
     order_delay: int = 0,
     anchored: bool = False,
     verbose: bool = True,
+    borrow_rate: float = 0.0,
+    bars_per_day: int | None = None,
 ) -> pl.DataFrame:
     """
     Perform walk-forward analysis.
@@ -399,6 +426,8 @@ def walk_forward_analysis(
         order_delay: Number of bars to delay order execution (default 0)
         anchored: Use anchored walk-forward (default False)
         verbose: Print progress
+        borrow_rate: Annual borrow rate for short positions (default 0.0)
+        bars_per_day: Number of bars in a trading day (default None)
 
     Returns:
         DataFrame with walk-forward results
@@ -457,6 +486,8 @@ def walk_forward_analysis(
             warmup=warmup,
             order_delay=order_delay,
             verbose=False,
+            borrow_rate=borrow_rate,
+            bars_per_day=bars_per_day,
         )
 
         # Test on out-of-sample data
@@ -470,6 +501,8 @@ def walk_forward_analysis(
             price_columns=price_columns,
             warmup=warmup,
             order_delay=order_delay,
+            borrow_rate=borrow_rate,
+            bars_per_day=bars_per_day,
         )
 
         results.append(

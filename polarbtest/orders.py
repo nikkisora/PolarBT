@@ -108,6 +108,13 @@ class Order:
     commission_paid: float = 0.0
     slippage_cost: float = 0.0
 
+    # STOP_LIMIT: tracks whether the stop has been triggered (converts to limit)
+    triggered: bool = False
+
+    # Bracket order metadata: stored on entry order, applied when it fills
+    bracket_stop_loss: float | None = None
+    bracket_take_profit: float | None = None
+
     tags: list[str] = field(default_factory=list)
     notes: str = ""
 

@@ -4,13 +4,13 @@ Remaining work organized by priority. Each item is a self-contained task.
 
 ---
 
-## 1. Core Gaps (fix what's half-done)
+## 1. Core Gaps (fix what's half-done) ✓ COMPLETE
 
-- [ ] Wire STOP order execution in `_try_execute_order()` — trigger when price crosses stop_price, then execute as market
-- [ ] Wire STOP_LIMIT order execution — trigger at stop_price, then place limit order at limit_price
-- [ ] Implement automatic SL/TP placement when a pending bracket entry order fills (currently only works with immediate fills, see TODO in `order_bracket()`)
-- [ ] Add short selling support to Portfolio — currently `_try_execute_order()` rejects sells that exceed held position; allow negative positions with proper cash/margin handling
-- [ ] Add borrow costs for short positions (daily rate deducted from cash)
+- [x] Wire STOP order execution in `_try_execute_order()` — trigger when price crosses stop_price, then execute as market
+- [x] Wire STOP_LIMIT order execution — trigger at stop_price, then place limit order at limit_price
+- [x] Implement automatic SL/TP placement when a pending bracket entry order fills (bracket metadata stored on Order, applied on fill)
+- [x] Add short selling support to Portfolio — negative positions with proper cash handling, position reversals
+- [x] Add borrow costs for short positions (daily rate deducted from cash, configurable via `borrow_rate` parameter)
 
 ## 2. Visualization
 
