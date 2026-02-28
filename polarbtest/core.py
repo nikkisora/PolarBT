@@ -925,6 +925,62 @@ class Portfolio:
         for asset in assets:
             self.close_position(asset)
 
+    def order_with_sizer(
+        self,
+        asset: str,
+        sizer: Any,
+        direction: float,
+        price: float | None = None,
+        limit_price: float | None = None,
+        stop_price: float | None = None,
+        order_type: Any = None,
+        tags: list[str] | None = None,
+        **kwargs: Any,
+    ) -> str | None:
+        """Place an order with quantity determined by a Sizer.
+
+        Args:
+            asset: Asset symbol.
+            sizer: A Sizer instance that computes the unsigned quantity.
+            direction: Positive for buy, negative for sell. Only the sign matters.
+            price: Price to pass to the sizer for calculation. If None, uses
+                the current asset price from the last known bar.
+            limit_price: Optional limit price for the order.
+            stop_price: Optional stop price for the order.
+            order_type: Optional OrderType override.
+            tags: Optional order tags.
+            **kwargs: Extra keyword arguments forwarded to sizer.size().
+
+        Returns:
+            Order ID string if placed, None if rejected or size is zero.
+        """
+        from polarbtest.sizers import Sizer as SizerClass
+
+        if not isinstance(sizer, SizerClass):
+            raise TypeError(f"sizer must be a Sizer instance, got {type(sizer).__name__}")
+
+        if price is None:
+            price = self._current_prices.get(asset, 0.0)
+        if price <= 0:
+            return None
+
+        sign = 1.0 if direction > 0 else -1.0 if direction < 0 else 0.0
+        if sign == 0.0:
+            return None
+
+        quantity = sizer.size(self, asset, price, **kwargs)
+        if quantity <= 0:
+            return None
+
+        return self.order(
+            asset,
+            quantity * sign,
+            limit_price=limit_price,
+            stop_price=stop_price,
+            order_type=order_type,
+            tags=tags,
+        )
+
     def order_day(
         self,
         asset: str,

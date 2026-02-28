@@ -20,6 +20,15 @@ from polarbtest.core import (
 )
 from polarbtest.orders import Order, OrderStatus, OrderType
 from polarbtest.runner import backtest, backtest_batch
+from polarbtest.sizers import (
+    FixedRiskSizer,
+    FixedSizer,
+    KellySizer,
+    MaxPositionSizer,
+    PercentSizer,
+    Sizer,
+    VolatilitySizer,
+)
 from polarbtest.trades import Trade, TradeTracker
 
 try:
@@ -44,4 +53,11 @@ __all__ = [
     "OrderStatus",
     "Trade",
     "TradeTracker",
+    "Sizer",
+    "FixedSizer",
+    "PercentSizer",
+    "FixedRiskSizer",
+    "KellySizer",
+    "VolatilitySizer",
+    "MaxPositionSizer",
 ]

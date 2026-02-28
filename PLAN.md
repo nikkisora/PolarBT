@@ -33,16 +33,16 @@ Remaining work organized by priority. Each item is a self-contained task.
 - [x] Add trade-level metrics — expectancy, SQN, Kelly criterion, consecutive wins/losses
 - [x] Integrate ulcer_index, tail_ratio, drawdown duration stats into `calculate_metrics()` output
 
-## 4. Position Sizing
+## 4. Position Sizing ✓ COMPLETE
 
-- [ ] Create `polarbtest/sizers.py` with `Sizer` base class
-- [ ] Implement `FixedSizer` — fixed unit count
-- [ ] Implement `PercentSizer` — percentage of portfolio
-- [ ] Implement `FixedRiskSizer` — risk X% per trade based on stop distance
-- [ ] Implement `KellySizer` — Kelly criterion sizing
-- [ ] Implement `VolatilitySizer` — ATR-based sizing for constant volatility
-- [ ] Implement `MaxPositionSizer` — wrapper that caps position size
-- [ ] Add `order_with_sizer()` method to Portfolio
+- [x] Create `polarbtest/sizers.py` with `Sizer` base class
+- [x] Implement `FixedSizer` — fixed unit count
+- [x] Implement `PercentSizer` — percentage of portfolio
+- [x] Implement `FixedRiskSizer` — risk X% per trade based on stop distance
+- [x] Implement `KellySizer` — Kelly criterion sizing
+- [x] Implement `VolatilitySizer` — ATR-based sizing for constant volatility
+- [x] Implement `MaxPositionSizer` — wrapper that caps position size
+- [x] Add `order_with_sizer()` method to Portfolio
 
 ## 5. Risk Limits
 

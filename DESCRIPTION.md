@@ -31,6 +31,7 @@ polarbtest/
 ├── trades.py         # Trade, TradeTracker
 ├── indicators.py     # Technical indicators as Polars expressions
 ├── metrics.py        # Performance metrics
+├── sizers.py         # Position sizing strategies
 ├── runner.py         # backtest(), backtest_batch(), optimize(), walk_forward_analysis()
 └── plotting/
     ├── __init__.py   # plot_backtest, plot_returns_distribution
@@ -143,6 +144,29 @@ Automatic trade lifecycle tracking via `TradeTracker`:
 - Tracks MAE (Maximum Adverse Excursion) and MFE (Maximum Favorable Excursion)
 - Exports to Polars DataFrame
 - Aggregate stats: win_rate, avg_win, avg_loss, profit_factor, total_pnl
+
+### Position Sizing
+
+`polarbtest/sizers.py` provides `Sizer` base class and implementations for computing trade quantities:
+
+| Sizer | Description |
+|---|---|
+| `FixedSizer(quantity)` | Always returns a fixed number of units |
+| `PercentSizer(percent)` | Percentage of portfolio value (e.g., 0.1 = 10%) |
+| `FixedRiskSizer(risk_percent)` | Risk X% of portfolio per trade based on stop distance |
+| `KellySizer(win_rate, avg_win, avg_loss, max_fraction)` | Kelly criterion sizing with configurable cap |
+| `VolatilitySizer(target_risk_percent)` | ATR-based sizing for constant risk per trade |
+| `MaxPositionSizer(sizer, max_quantity, max_percent)` | Wraps another sizer and caps position size |
+
+**Usage via Portfolio:**
+- `order_with_sizer(asset, sizer, direction, price=None, **kwargs)` — compute quantity via sizer, then place order
+
+```python
+from polarbtest import FixedRiskSizer
+
+sizer = FixedRiskSizer(risk_percent=0.02)
+ctx.portfolio.order_with_sizer("BTC", sizer, direction=1.0, stop_distance=500.0)
+```
 
 ### Engine
 
@@ -261,7 +285,7 @@ results = backtest(MyStrategy, data, params={...})
 
 ## Test Coverage
 
-245 tests passing. Test files:
+278 tests passing. Test files:
 - test_core.py, test_indicators.py, test_orders.py, test_limit_orders.py
 - test_trades.py, test_runner.py, test_warmup.py
 - test_take_profit.py, test_trailing_stop.py, test_bracket_orders.py
@@ -270,3 +294,4 @@ results = backtest(MyStrategy, data, params={...})
 - test_short_selling.py (short selling, borrow costs, bracket pending fills)
 - test_plotting.py (plot_backtest, plot_returns_distribution, trade markers, HTML export)
 - test_enhanced_metrics.py (ulcer index, tail ratio, information ratio, alpha/beta, drawdown durations, monthly returns, trade-level metrics)
+- test_sizers.py (FixedSizer, PercentSizer, FixedRiskSizer, KellySizer, VolatilitySizer, MaxPositionSizer, order_with_sizer integration)
