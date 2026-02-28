@@ -53,6 +53,7 @@ class Order:
         filled_size: Actual executed quantity
 
         valid_until: Bar index when order expires (None = GTC)
+        expiry_date: Date when order expires (for day orders with timestamp-based expiry)
         parent_order: Reference to parent order (for OCO, bracket)
         child_orders: List of child order IDs (SL/TP attached to this)
 
@@ -100,6 +101,7 @@ class Order:
     filled_size: float = 0.0
 
     valid_until: int | None = None
+    expiry_date: Any = None  # For day-based expiry (date when order expires)
     parent_order: str | None = None
     child_orders: list[str] = field(default_factory=list)
 

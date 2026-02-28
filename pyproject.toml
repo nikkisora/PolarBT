@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "polarbtest"
 version = "0.1.0"
-description = "Lightweight backtesting library for evolutionary strategy search"
+description = "Lightweight backtesting library built on polars"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}

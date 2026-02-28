@@ -2,27 +2,27 @@
 
 > Simplified task list distilled from ENHANCEMENT_ROADMAP.md
 
-**Last Updated**: 2026-02-01
+**Last Updated**: 2026-02-03
 
 ---
 
 ## Phase 1: Core Trading Functionality 🔴 CRITICAL
 
-### Order System ✅ COMPLETED
+### Order System ✅ COMPLETE (Phase 1.5)
 - [x] Create `Order` dataclass with order types (MARKET, LIMIT, STOP, STOP_LIMIT)
 - [x] Implement limit orders
 - [x] Implement stop-loss orders
-- [ ] Implement take-profit orders (similar to stop-loss, planned for Phase 1.5)
-- [ ] Implement trailing stop-loss (planned for Phase 1.5)
-- [ ] Implement OCO (One-Cancels-Other) orders (planned for Phase 1.5)
-- [ ] Add GTC vs Day orders support (foundation exists, planned for Phase 1.5)
+- [x] Implement take-profit orders ✅ DONE (2026-02-03)
+- [x] Implement trailing stop-loss ✅ DONE (2026-02-03)
+- [x] Implement OCO (One-Cancels-Other) orders via bracket orders ✅ DONE (2026-02-03)
+- [x] Add GTC vs Day orders support ✅ DONE (2026-02-03)
 - [x] Use OHLC data for realistic order fills
 - [x] Add order management methods (cancel, modify, get_orders)
 
-### Trade Tracking ✅ COMPLETED
+### Trade Tracking ✅ COMPLETE (Phase 1.5)
 - [x] Create `Trade` dataclass to track complete trades
 - [x] Track entry/exit prices, sizes, timestamps
-- [ ] Calculate MAE (Max Adverse Excursion) and MFE (Max Favorable Excursion) (foundation exists, planned for Phase 1.5)
+- [x] Calculate MAE (Max Adverse Excursion) and MFE (Max Favorable Excursion) ✅ DONE (2026-02-03)
 - [x] Export trades to Polars DataFrame
 - [x] Add trade-level metrics (win rate, profit factor, expectancy, SQN, Kelly) - basic stats done
 

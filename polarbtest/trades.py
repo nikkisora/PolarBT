@@ -183,7 +183,42 @@ class TradeTracker:
             "entry_value": abs_size * price,
             "entry_commission": commission,
             "direction": direction,
+            "mae": 0.0,  # Maximum Adverse Excursion
+            "mfe": 0.0,  # Maximum Favorable Excursion
         }
+
+    def update_mae_mfe(self, asset: str, current_price: float) -> None:
+        """
+        Update Maximum Adverse Excursion (MAE) and Maximum Favorable Excursion (MFE)
+        for an open position.
+
+        Args:
+            asset: Asset symbol
+            current_price: Current market price
+
+        Note:
+            Should be called on each bar while position is open.
+        """
+        if asset not in self.open_positions:
+            return
+
+        position = self.open_positions[asset]
+        entry_price = position["entry_price"]
+        direction = position["direction"]
+
+        # Calculate unrealized P&L
+        if direction == "long":
+            unrealized_pnl = current_price - entry_price
+        else:  # short
+            unrealized_pnl = entry_price - current_price
+
+        # Update MAE (most negative P&L seen)
+        if unrealized_pnl < position["mae"]:
+            position["mae"] = unrealized_pnl
+
+        # Update MFE (most positive P&L seen)
+        if unrealized_pnl > position["mfe"]:
+            position["mfe"] = unrealized_pnl
 
     def on_position_closed(
         self, asset: str, size_closed: float, price: float, bar: int, timestamp: Any, commission: float
@@ -225,6 +260,8 @@ class TradeTracker:
                 exit_size=entry_info["entry_size"],
                 exit_value=entry_info["entry_size"] * price,
                 exit_commission=commission,
+                mae=entry_info.get("mae"),
+                mfe=entry_info.get("mfe"),
             )
 
             self.trades.append(trade)
@@ -250,6 +287,8 @@ class TradeTracker:
                 exit_size=abs_size_closed,
                 exit_value=abs_size_closed * price,
                 exit_commission=commission,
+                mae=entry_info.get("mae"),
+                mfe=entry_info.get("mfe"),
             )
 
             self.trades.append(trade)
@@ -329,6 +368,8 @@ class TradeTracker:
                     "pnl": pl.Float64,
                     "pnl_pct": pl.Float64,
                     "bars_held": pl.Int64,
+                    "mae": pl.Float64,
+                    "mfe": pl.Float64,
                 }
             )
 
@@ -355,6 +396,8 @@ class TradeTracker:
                     "pnl_pct": trade.pnl_pct,
                     "return_pct": trade.return_pct,
                     "bars_held": trade.bars_held,
+                    "mae": trade.mae,
+                    "mfe": trade.mfe,
                 }
             )
 

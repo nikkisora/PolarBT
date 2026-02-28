@@ -11,12 +11,91 @@ This module provides the fundamental building blocks for backtesting:
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass
+from datetime import date, datetime
 from typing import Any
 
 import polars as pl
 
 from polarbtest.orders import Order, OrderStatus, OrderType
 from polarbtest.trades import TradeTracker
+
+
+def _extract_date(timestamp: Any) -> date | None:
+    """
+    Extract date from various timestamp types.
+
+    Supported formats:
+    - datetime objects (datetime.datetime or datetime.date)
+    - Unix timestamps (int or float, seconds or milliseconds)
+    - String formats: "yyyy-mm-dd hh:mm:ss", "yyyy-mm-dd", ISO format with 'T'
+
+    Args:
+        timestamp: Timestamp in various formats
+
+    Returns:
+        date object or None if extraction fails
+    """
+    if timestamp is None:
+        return None
+
+    # Python datetime
+    if isinstance(timestamp, datetime):
+        return timestamp.date()
+
+    # Already a date
+    if isinstance(timestamp, date):
+        return timestamp
+
+    # Unix timestamp (int or float)
+    if isinstance(timestamp, (int, float)):
+        # Handle both seconds and milliseconds
+        ts_value = timestamp
+        if ts_value > 1e10:  # Likely milliseconds
+            ts_value = ts_value / 1000
+        try:
+            return datetime.fromtimestamp(ts_value).date()
+        except (ValueError, OSError):
+            return None
+
+    # String parsing - try common formats
+    if isinstance(timestamp, str):
+        # Remove common separators and extract date part
+        # "yyyy-mm-dd hh:mm:ss" -> "yyyy-mm-dd"
+        # "yyyy-mm-ddThh:mm:ss" -> "yyyy-mm-dd"
+        # "yyyy-mm-dd" -> "yyyy-mm-dd"
+        try:
+            # Split by space or 'T' to get date part
+            if " " in timestamp:
+                date_part = timestamp.split(" ")[0]
+            elif "T" in timestamp:
+                date_part = timestamp.split("T")[0]
+            else:
+                date_part = timestamp
+
+            # Parse yyyy-mm-dd
+            parts = date_part.split("-")
+            if len(parts) == 3:
+                return date(int(parts[0]), int(parts[1]), int(parts[2]))
+        except (ValueError, IndexError):
+            pass
+
+    # Try converting to string and parsing (for other types like Polars datetime)
+    try:
+        dt_str = str(timestamp)
+        if " " in dt_str:
+            date_part = dt_str.split(" ")[0]
+        elif "T" in dt_str:
+            date_part = dt_str.split("T")[0]
+        else:
+            date_part = dt_str
+
+        parts = date_part.split("-")
+        if len(parts) == 3:
+            return date(int(parts[0]), int(parts[1]), int(parts[2]))
+    except (ValueError, AttributeError, IndexError):
+        pass
+
+    return None
 
 
 def standardize_dataframe(
@@ -164,6 +243,7 @@ class Portfolio:
         commission: float | tuple[float, float] = 0.0,
         slippage: float = 0.0,
         order_delay: int = 0,
+        bars_per_day: int | None = None,
     ):
         """
         Initialize a new portfolio.
@@ -174,6 +254,10 @@ class Portfolio:
                        For example: 0.001 means 0.1% per trade, (5.0, 0.001) means $5 + 0.1% per trade
             slippage: Slippage rate as a fraction (e.g., 0.0005 = 0.05%)
             order_delay: Number of bars to delay order execution (0 = immediate, 1 = next bar)
+            bars_per_day: Number of bars in a trading day (used for day order expiry fallback).
+                         For example: 390 for 1-min bars, 7.5 for 1-hour bars, 1 for daily bars.
+                         If None, day orders will try to use timestamps to detect day boundaries,
+                         or fall back to bars_valid parameter.
         """
         self.initial_cash = initial_cash
         self.cash = initial_cash
@@ -188,6 +272,7 @@ class Portfolio:
 
         self.slippage = slippage
         self.order_delay = order_delay
+        self.bars_per_day = bars_per_day
 
         # Asset positions: {asset_name: quantity}
         self.positions: dict[str, float] = defaultdict(float)
@@ -212,6 +297,13 @@ class Portfolio:
         # Stop-loss tracking: {asset: {"stop_price": float, "order_id": str}}
         self._stop_losses: dict[str, dict[str, Any]] = {}
 
+        # Take-profit tracking: {asset: {"target_price": float, "order_id": str}}
+        self._take_profits: dict[str, dict[str, Any]] = {}
+
+        # Trailing stop tracking: {asset: {"trail_pct": float | None, "trail_amount": float | None,
+        #                                   "highest_price": float, "stop_price": float, "order_id": str}}
+        self._trailing_stops: dict[str, dict[str, Any]] = {}
+
     def update_prices(
         self,
         prices: dict[str, float],
@@ -233,8 +325,22 @@ class Portfolio:
         self._current_bar = bar_index
         self._current_timestamp = timestamp
 
+        # Update MAE/MFE for open positions
+        for asset in self.trade_tracker.open_positions:
+            if asset in prices:
+                self.trade_tracker.update_mae_mfe(asset, prices[asset])
+
         # Check and execute stop-loss orders first
         self._check_stop_losses()
+
+        # Check and execute take-profit orders
+        self._check_take_profits()
+
+        # Update and check trailing stops (combined to avoid intra-bar issues)
+        self._update_and_check_trailing_stops()
+
+        # Check and expire orders that have exceeded their valid_until time
+        self._check_order_expiry()
 
         # Execute pending orders
         self._execute_pending_orders()
@@ -270,14 +376,48 @@ class Portfolio:
             # Get OHLC data for this asset
             ohlc = self._current_ohlc.get(asset, {})
             low = ohlc.get("low", self._current_prices.get(asset, float("inf")))
+            high = ohlc.get("high", self._current_prices.get(asset, 0.0))
 
-            # Check if stop was hit (for long positions, check if low <= stop_price)
+            # Check if stop was hit
             position_size = self.get_position(asset)
             if position_size > 0 and low <= stop_price:
-                # Stop hit - create market order to close position
+                # Long position stop hit - close position
                 self.close_position(asset)
-                # Remove the stop-loss
-                del self._stop_losses[asset]
+                # Remove stop-loss if it still exists (may have been removed by close_position cleanup)
+                if asset in self._stop_losses:
+                    del self._stop_losses[asset]
+            elif position_size < 0 and high >= stop_price:
+                # Short position stop hit - close position
+                self.close_position(asset)
+                # Remove stop-loss if it still exists
+                if asset in self._stop_losses:
+                    del self._stop_losses[asset]
+
+    def _check_take_profits(self) -> None:
+        """Check if any take-profit orders should be triggered."""
+        for asset in list(self._take_profits.keys()):
+            tp_info = self._take_profits[asset]
+            target_price = tp_info["target_price"]
+
+            # Get OHLC data for this asset
+            ohlc = self._current_ohlc.get(asset, {})
+            low = ohlc.get("low", self._current_prices.get(asset, float("inf")))
+            high = ohlc.get("high", self._current_prices.get(asset, 0.0))
+
+            # Check if take-profit was hit
+            position_size = self.get_position(asset)
+            if position_size > 0 and high >= target_price:
+                # Long position take-profit hit - close position
+                self.close_position(asset)
+                # Remove take-profit if it still exists (may have been removed by close_position cleanup)
+                if asset in self._take_profits:
+                    del self._take_profits[asset]
+            elif position_size < 0 and low <= target_price:
+                # Short position take-profit hit - close position
+                self.close_position(asset)
+                # Remove take-profit if it still exists
+                if asset in self._take_profits:
+                    del self._take_profits[asset]
 
     def _execute_pending_orders(self) -> None:
         """Execute orders that are due."""
@@ -292,10 +432,24 @@ class Portfolio:
             self._try_execute_order(order)
 
     def _check_order_expiry(self) -> None:
-        """Check and expire orders that have passed their valid_until time."""
+        """Check and expire orders that have passed their valid_until time or expiry_date."""
+        current_date = _extract_date(self._current_timestamp)
+
         for order in self.orders.values():
-            if order.is_active() and order.valid_until is not None and self._current_bar > order.valid_until:
-                order.mark_expired()
+            if not order.is_active():
+                continue
+
+            # Check date-based expiry first (if order has expiry_date set)
+            if order.expiry_date is not None and current_date is not None:
+                if current_date > order.expiry_date:
+                    order.mark_expired()
+                    continue
+
+            # Check bar-based expiry
+            if order.valid_until is not None and self._current_bar > order.valid_until:
+                # Skip if this order uses date-based expiry (valid_until was set to large number)
+                if order.expiry_date is None or order.valid_until < 999999:
+                    order.mark_expired()
 
     def _can_fill_limit_order(self, order: Order) -> bool:
         """
@@ -342,11 +496,15 @@ class Portfolio:
 
         # Determine execution price
         if order.order_type == OrderType.LIMIT and order.limit_price is not None:
-            price = order.limit_price
+            price: float = order.limit_price
         else:
-            price = self._current_prices.get(order.asset)
+            price_value = self._current_prices.get(order.asset)
+            if price_value is None:
+                order.mark_rejected()
+                return False
+            price = price_value
 
-        if price is None or price <= 0:
+        if price <= 0:
             order.mark_rejected()
             return False
 
@@ -428,6 +586,10 @@ class Portfolio:
                 timestamp=self._current_timestamp,
                 commission=commission,
             )
+            # Clean up stop-loss, take-profit, and trailing stop when position closes
+            self.remove_stop_loss(asset)
+            self.remove_take_profit(asset)
+            self.remove_trailing_stop(asset)
         # Position reduced (partial close)
         elif abs(new_position) < abs(old_position):
             size_closed = abs(old_position) - abs(new_position)
@@ -623,6 +785,98 @@ class Portfolio:
         for asset in assets:
             self.close_position(asset)
 
+    def order_day(
+        self,
+        asset: str,
+        quantity: float,
+        limit_price: float | None = None,
+        bars_valid: int | None = None,
+    ) -> str | None:
+        """
+        Place a Day order that expires at end of trading day.
+
+        The expiry is calculated automatically using one of these methods (in priority order):
+        1. Timestamp-based: If timestamps are available, order expires when date changes
+        2. bars_valid parameter: If specified, order expires after that many bars
+        3. bars_per_day config: If Portfolio was initialized with bars_per_day, use that
+        4. Default: Falls back to 1 bar if nothing else specified
+
+        Args:
+            asset: Asset name
+            quantity: Number of units to buy (positive) or sell (negative)
+            limit_price: Optional limit price
+            bars_valid: Optional number of bars order remains valid. If None, will auto-calculate
+                       based on timestamps or bars_per_day configuration.
+
+        Returns:
+            order_id if order was placed, None if rejected
+
+        Example:
+            # Auto-detect day boundaries from timestamps
+            portfolio.order_day("BTC", 0.1, limit_price=50000)
+
+            # Or specify bars explicitly
+            portfolio.order_day("BTC", 0.1, limit_price=50000, bars_valid=390)  # For 1-min bars
+        """
+        order_id = self.order(asset, quantity, limit_price=limit_price)
+        if not order_id:
+            return None
+
+        order = self.orders[order_id]
+
+        # Strategy 1: Use explicit bars_valid parameter (highest priority)
+        if bars_valid is not None:
+            order.valid_until = self._current_bar + bars_valid
+        # Strategy 2: Try timestamp-based day detection
+        elif (current_date := _extract_date(self._current_timestamp)) is not None:
+            order.expiry_date = current_date
+            # Also set valid_until as a backup (will be checked in expiry logic)
+            # Set to a large number so it doesn't expire before date check
+            order.valid_until = self._current_bar + 999999
+        # Strategy 3: Use bars_per_day configuration (smart end-of-day calculation)
+        elif self.bars_per_day is not None:
+            # Calculate which bar within the current trading day we're on
+            # Example: If bars_per_day=390 and current_bar=450, we're on bar 60 of day 1
+            current_bar_in_day = self._current_bar % self.bars_per_day
+            # Calculate bars remaining until end of current day
+            # Example: 390 - 60 - 1 = 329 bars until end of day
+            bars_until_eod = self.bars_per_day - current_bar_in_day - 1
+            # Order expires at end of current trading day
+            order.valid_until = self._current_bar + bars_until_eod
+        # Strategy 4: Default to 1 bar
+        else:
+            order.valid_until = self._current_bar + 1
+
+        return order_id
+
+    def order_gtc(
+        self,
+        asset: str,
+        quantity: float,
+        limit_price: float | None = None,
+    ) -> str | None:
+        """
+        Place a Good-Till-Cancelled (GTC) order that remains active until filled or manually cancelled.
+
+        Args:
+            asset: Asset name
+            quantity: Number of units to buy (positive) or sell (negative)
+            limit_price: Optional limit price
+
+        Returns:
+            order_id if order was placed, None if rejected
+
+        Example:
+            # Order that stays active until filled
+            portfolio.order_gtc("BTC", 0.1, limit_price=50000)
+
+        Note:
+            GTC orders have valid_until=None, which means they never expire automatically.
+            Regular order() calls default to GTC behavior.
+        """
+        # Regular order() already defaults to GTC (valid_until=None)
+        return self.order(asset, quantity, limit_price=limit_price)
+
     def get_orders(self, status: OrderStatus | None = None, asset: str | None = None) -> list[Order]:
         """
         Get orders, optionally filtered by status and/or asset.
@@ -707,6 +961,343 @@ class Portfolio:
         self._stop_losses[asset] = {"stop_price": stop_price, "order_id": order_id}
 
         return order_id
+
+    def remove_stop_loss(self, asset: str) -> bool:
+        """
+        Remove stop-loss for an asset.
+
+        Args:
+            asset: Asset symbol
+
+        Returns:
+            True if stop-loss was removed, False if none existed
+        """
+        if asset in self._stop_losses:
+            del self._stop_losses[asset]
+            return True
+        return False
+
+    def get_stop_loss(self, asset: str) -> float | None:
+        """
+        Get stop-loss price for an asset.
+
+        Args:
+            asset: Asset symbol
+
+        Returns:
+            Stop-loss price or None if not set
+        """
+        if asset in self._stop_losses:
+            return float(self._stop_losses[asset]["stop_price"])
+        return None
+
+    def set_take_profit(
+        self, asset: str, target_price: float | None = None, target_pct: float | None = None
+    ) -> str | None:
+        """
+        Set a take-profit order for a position.
+
+        Args:
+            asset: Asset symbol
+            target_price: Absolute target price
+            target_pct: Target as percentage above entry (e.g., 0.10 for 10% profit)
+
+        Returns:
+            order_id if take-profit was set, None otherwise
+        """
+        position = self.get_position(asset)
+        if position == 0:
+            return None  # No position to protect
+
+        # Calculate target price
+        if target_price is None and target_pct is not None:
+            current_price = self._current_prices.get(asset)
+            if current_price is None:
+                return None
+            target_price = current_price * (1 + target_pct)
+
+        if target_price is None:
+            return None
+
+        # Store take-profit info
+        order_id = self._generate_order_id()
+        self._take_profits[asset] = {"target_price": target_price, "order_id": order_id}
+
+        return order_id
+
+    def remove_take_profit(self, asset: str) -> bool:
+        """
+        Remove take-profit for an asset.
+
+        Args:
+            asset: Asset symbol
+
+        Returns:
+            True if take-profit was removed, False if none existed
+        """
+        if asset in self._take_profits:
+            del self._take_profits[asset]
+            return True
+        return False
+
+    def get_take_profit(self, asset: str) -> float | None:
+        """
+        Get take-profit price for an asset.
+
+        Args:
+            asset: Asset symbol
+
+        Returns:
+            Take-profit price or None if not set
+        """
+        if asset in self._take_profits:
+            return float(self._take_profits[asset]["target_price"])
+        return None
+
+    def set_trailing_stop(
+        self,
+        asset: str,
+        trail_pct: float | None = None,
+        trail_amount: float | None = None,
+    ) -> str | None:
+        """
+        Set a trailing stop-loss order for a position.
+
+        The stop price will trail the market price by a fixed percentage or amount,
+        moving up (for long) or down (for short) as the price moves favorably.
+
+        Args:
+            asset: Asset symbol
+            trail_pct: Trail by percentage (e.g., 0.05 for 5% trailing stop)
+            trail_amount: Trail by absolute amount (e.g., 1000 for $1000 trailing stop)
+
+        Returns:
+            order_id if trailing stop was set, None otherwise
+        """
+        position = self.get_position(asset)
+        if position == 0:
+            return None  # No position to protect
+
+        if trail_pct is None and trail_amount is None:
+            return None  # Need either percentage or amount
+
+        # Get current price
+        current_price = self._current_prices.get(asset)
+        if current_price is None:
+            return None
+
+        # Initialize highest/lowest price for tracking
+        if position > 0:
+            # Long position - track highest price
+            highest_price = current_price
+            if trail_pct is not None:
+                stop_price = current_price * (1 - trail_pct)
+            else:
+                stop_price = current_price - trail_amount  # type: ignore
+        else:
+            # Short position - track lowest price
+            highest_price = current_price  # We'll use this field for lowest in shorts
+            if trail_pct is not None:
+                stop_price = current_price * (1 + trail_pct)
+            else:
+                stop_price = current_price + trail_amount  # type: ignore
+
+        # Store trailing stop info
+        order_id = self._generate_order_id()
+        self._trailing_stops[asset] = {
+            "trail_pct": trail_pct,
+            "trail_amount": trail_amount,
+            "highest_price": highest_price,
+            "stop_price": stop_price,
+            "order_id": order_id,
+        }
+
+        return order_id
+
+    def remove_trailing_stop(self, asset: str) -> bool:
+        """
+        Remove trailing stop for an asset.
+
+        Args:
+            asset: Asset symbol
+
+        Returns:
+            True if trailing stop was removed, False if none existed
+        """
+        if asset in self._trailing_stops:
+            del self._trailing_stops[asset]
+            return True
+        return False
+
+    def get_trailing_stop(self, asset: str) -> float | None:
+        """
+        Get current trailing stop price for an asset.
+
+        Args:
+            asset: Asset symbol
+
+        Returns:
+            Trailing stop price or None if not set
+        """
+        if asset in self._trailing_stops:
+            return float(self._trailing_stops[asset]["stop_price"])
+        return None
+
+    def _update_and_check_trailing_stops(self) -> None:
+        """
+        Update and check trailing stops in one pass to handle intra-bar price action correctly.
+
+        For each asset with a trailing stop:
+        1. First check if the OLD stop price was hit by the bar's low (long) or high (short)
+        2. If not hit, update the stop price based on new highs (long) or lows (short)
+
+        This avoids the bug where we update based on the bar high, then trigger on the bar low.
+        """
+        for asset in list(self._trailing_stops.keys()):
+            trail_info = self._trailing_stops[asset]
+            old_stop_price = trail_info["stop_price"]
+
+            position_size = self.get_position(asset)
+
+            # If position is already closed, remove trailing stop
+            if position_size == 0:
+                del self._trailing_stops[asset]
+                continue
+
+            # Get OHLC data for this asset
+            current_price = self._current_prices.get(asset)
+            if current_price is None:
+                continue
+
+            ohlc = self._current_ohlc.get(asset, {})
+            low = ohlc.get("low", current_price)
+            high = ohlc.get("high", current_price)
+
+            trail_pct = trail_info["trail_pct"]
+            trail_amount = trail_info["trail_amount"]
+
+            # STEP 1: Check if OLD stop price was hit
+            stop_triggered = False
+            if position_size > 0 and low <= old_stop_price:
+                # Long position stop hit
+                stop_triggered = True
+            elif position_size < 0 and high >= old_stop_price:
+                # Short position stop hit
+                stop_triggered = True
+
+            if stop_triggered:
+                # Stop was hit - close position and remove trailing stop
+                self.close_position(asset)
+                if asset in self._trailing_stops:
+                    del self._trailing_stops[asset]
+            else:
+                # STEP 2: Stop not hit - update if price made new high/low
+                if position_size > 0:
+                    # Long position - update if HIGH makes new high
+                    if high > trail_info["highest_price"]:
+                        trail_info["highest_price"] = high
+                        # Recalculate stop price based on the new high
+                        if trail_pct is not None:
+                            trail_info["stop_price"] = high * (1 - trail_pct)
+                        else:
+                            trail_info["stop_price"] = high - trail_amount
+                elif position_size < 0:
+                    # Short position - update if LOW makes new low
+                    # Note: highest_price stores the lowest price for shorts
+                    if low < trail_info["highest_price"]:
+                        trail_info["highest_price"] = low
+                        # Recalculate stop price based on the new low
+                        if trail_pct is not None:
+                            trail_info["stop_price"] = low * (1 + trail_pct)
+                        else:
+                            trail_info["stop_price"] = low + trail_amount
+
+    def order_bracket(
+        self,
+        asset: str,
+        quantity: float,
+        stop_loss: float | None = None,
+        take_profit: float | None = None,
+        stop_loss_pct: float | None = None,
+        take_profit_pct: float | None = None,
+        limit_price: float | None = None,
+    ) -> dict[str, str | None]:
+        """
+        Place a bracket order: entry order with attached stop-loss and take-profit.
+
+        When the entry order fills, SL and TP are set automatically. When either SL or TP
+        triggers, the position is closed and both are removed (OCO = One-Cancels-Other).
+
+        Args:
+            asset: Asset symbol
+            quantity: Size to trade (positive=buy, negative=sell)
+            stop_loss: Absolute stop-loss price
+            take_profit: Absolute take-profit price
+            stop_loss_pct: Stop-loss as percentage below/above entry (e.g., 0.05 for 5%)
+            take_profit_pct: Take-profit as percentage above/below entry (e.g., 0.10 for 10%)
+            limit_price: Optional limit price for entry order
+
+        Returns:
+            Dictionary with "entry", "stop_loss", and "take_profit" status
+
+        Example:
+            # Long position with 5% stop-loss and 10% take-profit
+            result = portfolio.order_bracket(
+                "BTC", 0.1, stop_loss_pct=0.05, take_profit_pct=0.10
+            )
+
+        Note:
+            OCO behavior is automatic - when position closes (from either SL or TP),
+            both stops are removed. See _update_trade_tracker() for cleanup logic.
+        """
+        # Place entry order
+        entry_order_id = self.order(asset, quantity, limit_price=limit_price)
+        if entry_order_id is None:
+            return {"entry": None, "stop_loss": None, "take_profit": None}
+
+        entry_order = self.orders[entry_order_id]
+
+        # Get entry price (use fill price if filled, otherwise estimate)
+        if entry_order.is_filled():
+            entry_price = entry_order.filled_price
+        elif limit_price is not None:
+            entry_price = limit_price
+        else:
+            entry_price = self._current_prices.get(asset)
+
+        if entry_price is None:
+            return {"entry": entry_order_id, "stop_loss": None, "take_profit": None}
+
+        # Calculate absolute prices from percentages
+        if stop_loss is None and stop_loss_pct is not None:
+            if quantity > 0:  # Long position
+                stop_loss = entry_price * (1 - stop_loss_pct)
+            else:  # Short position
+                stop_loss = entry_price * (1 + stop_loss_pct)
+
+        if take_profit is None and take_profit_pct is not None:
+            if quantity > 0:  # Long position
+                take_profit = entry_price * (1 + take_profit_pct)
+            else:  # Short position
+                take_profit = entry_price * (1 - take_profit_pct)
+
+        # If entry order filled immediately (order_delay=0), set stops on position
+        if entry_order.is_filled():
+            sl_id = None
+            tp_id = None
+
+            if stop_loss is not None:
+                sl_id = self.set_stop_loss(asset, stop_price=stop_loss)
+
+            if take_profit is not None:
+                tp_id = self.set_take_profit(asset, target_price=take_profit)
+
+            return {"entry": entry_order_id, "stop_loss": sl_id, "take_profit": tp_id}
+
+        # Entry not yet filled - return entry order ID only
+        # User should manually set stops after entry fills
+        # TODO: Implement automatic stop placement when pending entry order fills
+        return {"entry": entry_order_id, "stop_loss": None, "take_profit": None}
 
     def get_trades(self) -> pl.DataFrame:
         """
