@@ -744,16 +744,17 @@ class Portfolio:
                 continue
 
             # Check date-based expiry first (if order has expiry_date set)
-            if order.expiry_date is not None and current_date is not None:
-                if current_date > order.expiry_date:
-                    order.mark_expired()
-                    continue
+            if order.expiry_date is not None and current_date is not None and current_date > order.expiry_date:
+                order.mark_expired()
+                continue
 
-            # Check bar-based expiry
-            if order.valid_until is not None and self._current_bar > order.valid_until:
-                # Skip if this order uses date-based expiry (valid_until was set to large number)
-                if order.expiry_date is None or order.valid_until < 999999:
-                    order.mark_expired()
+            # Check bar-based expiry (skip if this order uses date-based expiry / valid_until was set to large number)
+            if (
+                order.valid_until is not None
+                and self._current_bar > order.valid_until
+                and (order.expiry_date is None or order.valid_until < 999999)
+            ):
+                order.mark_expired()
 
     def _can_fill_limit_order(self, order: Order) -> bool:
         """
@@ -1573,17 +1574,11 @@ class Portfolio:
         if position > 0:
             # Long position - track highest price
             highest_price = current_price
-            if trail_pct is not None:
-                stop_price = current_price * (1 - trail_pct)
-            else:
-                stop_price = current_price - trail_amount  # type: ignore
+            stop_price = current_price * (1 - trail_pct) if trail_pct is not None else current_price - trail_amount  # type: ignore
         else:
             # Short position - track lowest price
             highest_price = current_price  # We'll use this field for lowest in shorts
-            if trail_pct is not None:
-                stop_price = current_price * (1 + trail_pct)
-            else:
-                stop_price = current_price + trail_amount  # type: ignore
+            stop_price = current_price * (1 + trail_pct) if trail_pct is not None else current_price + trail_amount  # type: ignore
 
         # Store trailing stop info
         order_id = self._generate_order_id()
@@ -1684,16 +1679,15 @@ class Portfolio:
                             trail_info["stop_price"] = high * (1 - trail_pct)
                         else:
                             trail_info["stop_price"] = high - trail_amount
-                elif position_size < 0:
+                elif position_size < 0 and low < trail_info["highest_price"]:
                     # Short position - update if LOW makes new low
                     # Note: highest_price stores the lowest price for shorts
-                    if low < trail_info["highest_price"]:
-                        trail_info["highest_price"] = low
-                        # Recalculate stop price based on the new low
-                        if trail_pct is not None:
-                            trail_info["stop_price"] = low * (1 + trail_pct)
-                        else:
-                            trail_info["stop_price"] = low + trail_amount
+                    trail_info["highest_price"] = low
+                    # Recalculate stop price based on the new low
+                    if trail_pct is not None:
+                        trail_info["stop_price"] = low * (1 + trail_pct)
+                    else:
+                        trail_info["stop_price"] = low + trail_amount
 
     def order_bracket(
         self,
@@ -1753,16 +1747,10 @@ class Portfolio:
 
         # Calculate absolute prices from percentages
         if stop_loss is None and stop_loss_pct is not None:
-            if quantity > 0:  # Long position
-                stop_loss = entry_price * (1 - stop_loss_pct)
-            else:  # Short position
-                stop_loss = entry_price * (1 + stop_loss_pct)
+            stop_loss = entry_price * (1 - stop_loss_pct) if quantity > 0 else entry_price * (1 + stop_loss_pct)
 
         if take_profit is None and take_profit_pct is not None:
-            if quantity > 0:  # Long position
-                take_profit = entry_price * (1 + take_profit_pct)
-            else:  # Short position
-                take_profit = entry_price * (1 - take_profit_pct)
+            take_profit = entry_price * (1 + take_profit_pct) if quantity > 0 else entry_price * (1 - take_profit_pct)
 
         # If entry order filled immediately (order_delay=0), set stops on position
         if entry_order.is_filled():

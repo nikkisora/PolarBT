@@ -8,10 +8,13 @@ This example demonstrates:
 4. Analyzing trade results
 """
 
+from typing import cast
+
 import polars as pl
 
 from polarbtest import Strategy, backtest
 from polarbtest import indicators as ind
+from polarbtest.core import BacktestContext
 from polarbtest.orders import OrderStatus, OrderType
 
 
@@ -24,11 +27,11 @@ class LimitOrderStrategy(Strategy):
     - Exit with limit order 3% above entry (take profit)
     """
 
-    def preprocess(self, df):
+    def preprocess(self, df: pl.DataFrame) -> pl.DataFrame:
         """Calculate RSI for signal generation."""
         return df.with_columns([ind.rsi("close", 14).alias("rsi")])
 
-    def next(self, ctx):
+    def next(self, ctx: BacktestContext) -> None:
         """Execute strategy logic with limit orders and stop-loss."""
         position = ctx.portfolio.get_position("asset")
         current_price = ctx.row.get("close")
@@ -63,7 +66,7 @@ class LimitOrderStrategy(Strategy):
             # If we just entered, set stop-loss
             if filled_orders:
                 last_fill = filled_orders[-1]
-                if last_fill.filled_bar == ctx.bar_index - 1:  # Just filled last bar
+                if last_fill.filled_bar == ctx.bar_index - 1 and last_fill.filled_price is not None:
                     entry_price = last_fill.filled_price
                     stop_price = entry_price * 0.98  # 2% stop-loss
                     take_profit = entry_price * 1.03  # 3% take-profit
@@ -88,7 +91,7 @@ class LimitOrderStrategy(Strategy):
             print(f"Bar {ctx.bar_index}: Closed position (RSI overbought: {rsi:.1f})")
 
 
-def main():
+def main() -> None:
     """Run limit order strategy example."""
     # Generate sample OHLCV data with volatility
     import numpy as np
@@ -117,7 +120,9 @@ def main():
     print("Limit Order Strategy Backtest")
     print("=" * 80)
     print(f"Data: {len(data)} bars")
-    print(f"Price range: ${data['close'].min():.2f} - ${data['close'].max():.2f}")
+    price_min = cast(float, data["close"].min())
+    price_max = cast(float, data["close"].max())
+    print(f"Price range: ${price_min:.2f} - ${price_max:.2f}")
     print()
 
     # Run backtest
@@ -174,11 +179,16 @@ def main():
         losing_trades = trades_df.filter(pl.col("pnl") < 0)
 
         if len(winning_trades) > 0:
-            print(f"\nAvg Winning Trade: ${winning_trades['pnl'].mean():.2f} ({winning_trades['pnl_pct'].mean():.2f}%)")
+            avg_win = cast(float, winning_trades["pnl"].mean())
+            avg_win_pct = cast(float, winning_trades["pnl_pct"].mean())
+            print(f"\nAvg Winning Trade: ${avg_win:.2f} ({avg_win_pct:.2f}%)")
         if len(losing_trades) > 0:
-            print(f"Avg Losing Trade:  ${losing_trades['pnl'].mean():.2f} ({losing_trades['pnl_pct'].mean():.2f}%)")
+            avg_loss = cast(float, losing_trades["pnl"].mean())
+            avg_loss_pct = cast(float, losing_trades["pnl_pct"].mean())
+            print(f"Avg Losing Trade:  ${avg_loss:.2f} ({avg_loss_pct:.2f}%)")
 
-        print(f"Avg Bars Held:     {trades_df['bars_held'].mean():.1f}")
+        avg_bars = cast(float, trades_df["bars_held"].mean())
+        print(f"Avg Bars Held:     {avg_bars:.1f}")
     else:
         print("No trades executed")
 

@@ -33,7 +33,7 @@ class PassthroughStrategy(Strategy):
         pass
 
 
-def _make_ohlcv_data():
+def _make_ohlcv_data() -> pl.DataFrame:
     return pl.DataFrame(
         {
             "timestamp": list(range(20)),

@@ -47,6 +47,9 @@ class MomentumPortfolio(Strategy):
         eth_mom = ctx.row.get("eth_momentum")
 
         # Allocate 100% to strongest momentum asset
+        if btc_mom is None or eth_mom is None:
+            return
+
         if btc_mom > eth_mom:
             ctx.portfolio.order_target_percent("BTC", 1.0)
             ctx.portfolio.order_target_percent("ETH", 0.0)

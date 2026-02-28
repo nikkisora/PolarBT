@@ -207,10 +207,7 @@ class TradeTracker:
         direction = position["direction"]
 
         # Calculate unrealized P&L
-        if direction == "long":
-            unrealized_pnl = current_price - entry_price
-        else:  # short
-            unrealized_pnl = entry_price - current_price
+        unrealized_pnl = current_price - entry_price if direction == "long" else entry_price - current_price
 
         # Update MAE (most negative P&L seen)
         if unrealized_pnl < position["mae"]:

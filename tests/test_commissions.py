@@ -207,6 +207,7 @@ class TestEngineCommissionModel:
         assert results["final_equity"] > 0
 
         # Commission should be taker rate: 10 * 100 * 0.001 = 1.0
+        assert engine.portfolio is not None
         orders = engine.portfolio.get_orders()
         filled = [o for o in orders if o.status.name == "FILLED"]
         assert len(filled) == 1
@@ -222,6 +223,7 @@ class TestEngineCommissionModel:
         )
         engine.run()
         # Commission: 10 * 100 * 0.002 = 2.0
+        assert engine.portfolio is not None
         orders = engine.portfolio.get_orders()
         filled = [o for o in orders if o.status.name == "FILLED"]
         assert filled[0].commission_paid == pytest.approx(2.0)
@@ -236,6 +238,7 @@ class TestEngineCommissionModel:
         )
         engine.run()
         # min commission = 5.0 (since 10*100*0.001=1.0 < 5.0)
+        assert engine.portfolio is not None
         orders = engine.portfolio.get_orders()
         filled = [o for o in orders if o.status.name == "FILLED"]
         assert filled[0].commission_paid == pytest.approx(5.0)
@@ -244,6 +247,7 @@ class TestEngineCommissionModel:
         data = self._make_data()
         engine = Engine(strategy=BuyAndHoldStrategy(), data=data, commission=0.001, warmup=0)
         engine.run()
+        assert engine.portfolio is not None
         orders = engine.portfolio.get_orders()
         filled = [o for o in orders if o.status.name == "FILLED"]
         assert filled[0].commission_paid == pytest.approx(1.0)
@@ -252,6 +256,7 @@ class TestEngineCommissionModel:
         data = self._make_data()
         engine = Engine(strategy=BuyAndHoldStrategy(), data=data, commission=(5.0, 0.001), warmup=0)
         engine.run()
+        assert engine.portfolio is not None
         orders = engine.portfolio.get_orders()
         filled = [o for o in orders if o.status.name == "FILLED"]
         # 5.0 + 10*100*0.001 = 6.0

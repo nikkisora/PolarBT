@@ -8,6 +8,7 @@ The strategy alternates between long and short positions to showcase
 all four trade outcomes: profitable long, losing long, profitable short, losing short.
 """
 
+import math as _math
 from datetime import datetime, timedelta
 
 import polars as pl
@@ -31,8 +32,6 @@ timestamps = [BASE_DATE + timedelta(days=i) for i in range(N)]
 # 100-140: steady decline (short wins)
 # 140-160: brief spike then resume decline (whipsaw: losing long)
 # 160-200: rise (long wins)
-import math as _math
-
 close: list[float] = []
 for i in range(N):
     noise = 0.4 * _math.sin(i * 0.8)

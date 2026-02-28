@@ -19,7 +19,7 @@ from polarbtest.trades import Trade
 
 def _make_equity_df(values: list[float], with_timestamps: bool = False) -> pl.DataFrame:
     """Helper to create equity DataFrames."""
-    data: dict[str, list] = {"equity": values}
+    data: dict[str, list[float] | list[date]] = {"equity": values}
     if with_timestamps:
         start = date(2024, 1, 1)
         data["timestamp"] = [start + timedelta(days=i) for i in range(len(values))]

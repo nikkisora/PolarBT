@@ -36,7 +36,7 @@ class TestStopOrders:
         portfolio.update_prices(
             {"BTC": 53000}, bar_index=2, ohlc_data={"BTC": {"open": 51500, "high": 53000, "low": 51000, "close": 52500}}
         )
-        assert order.status == OrderStatus.FILLED
+        assert order.status == OrderStatus.FILLED  # type: ignore[comparison-overlap]
         assert order.filled_price == 52000  # Filled at stop price
         assert portfolio.get_position("BTC") == pytest.approx(0.1)
 
@@ -70,7 +70,7 @@ class TestStopOrders:
         portfolio.update_prices(
             {"BTC": 47000}, bar_index=2, ohlc_data={"BTC": {"open": 49000, "high": 49500, "low": 47000, "close": 47500}}
         )
-        assert order.status == OrderStatus.FILLED
+        assert order.status == OrderStatus.FILLED  # type: ignore[comparison-overlap]
         assert order.filled_price == 48000
         assert portfolio.get_position("BTC") == pytest.approx(0.5)
 
@@ -195,7 +195,7 @@ class TestStopLimitOrders:
         portfolio.update_prices(
             {"BTC": 51000}, bar_index=2, ohlc_data={"BTC": {"open": 52000, "high": 52500, "low": 51000, "close": 51200}}
         )
-        assert order.status == OrderStatus.FILLED
+        assert order.status == OrderStatus.FILLED  # type: ignore[comparison-overlap]
         assert order.filled_price == 51500
 
     def test_sell_stop_limit(self):

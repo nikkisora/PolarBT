@@ -8,21 +8,24 @@ This example demonstrates:
 4. Identifying best and worst trades
 """
 
+from typing import cast
+
 import numpy as np
 import polars as pl
 
 from polarbtest import Strategy, backtest
 from polarbtest import indicators as ind
+from polarbtest.core import BacktestContext
 
 
 class SimpleRSIStrategy(Strategy):
     """Simple RSI mean-reversion strategy for generating trades."""
 
-    def preprocess(self, df):
+    def preprocess(self, df: pl.DataFrame) -> pl.DataFrame:
         """Calculate RSI indicator."""
         return df.with_columns([ind.rsi("close", 14).alias("rsi")])
 
-    def next(self, ctx):
+    def next(self, ctx: BacktestContext) -> None:
         """Execute strategy: buy when RSI < 30, sell when RSI > 70."""
         rsi = ctx.row.get("rsi")
         if rsi is None:
@@ -39,7 +42,7 @@ class SimpleRSIStrategy(Strategy):
             ctx.portfolio.close_position("asset")
 
 
-def analyze_trades(trades_df: pl.DataFrame):
+def analyze_trades(trades_df: pl.DataFrame) -> None:
     """Perform detailed trade analysis."""
 
     if len(trades_df) == 0:
@@ -72,18 +75,29 @@ def analyze_trades(trades_df: pl.DataFrame):
     print(f"  Profit Factor:    {gross_wins / gross_losses if gross_losses > 0 else float('inf'):.2f}")
 
     if len(winning_trades) > 0:
-        print(f"  Avg Win:          ${winning_trades['pnl'].mean():.2f} ({winning_trades['pnl_pct'].mean():.2f}%)")
-        print(f"  Largest Win:      ${winning_trades['pnl'].max():.2f} ({winning_trades['pnl_pct'].max():.2f}%)")
+        avg_win = cast(float, winning_trades["pnl"].mean())
+        avg_win_pct = cast(float, winning_trades["pnl_pct"].mean())
+        max_win = cast(float, winning_trades["pnl"].max())
+        max_win_pct = cast(float, winning_trades["pnl_pct"].max())
+        print(f"  Avg Win:          ${avg_win:.2f} ({avg_win_pct:.2f}%)")
+        print(f"  Largest Win:      ${max_win:.2f} ({max_win_pct:.2f}%)")
 
     if len(losing_trades) > 0:
-        print(f"  Avg Loss:         ${losing_trades['pnl'].mean():.2f} ({losing_trades['pnl_pct'].mean():.2f}%)")
-        print(f"  Largest Loss:     ${losing_trades['pnl'].min():.2f} ({losing_trades['pnl_pct'].min():.2f}%)")
+        avg_loss = cast(float, losing_trades["pnl"].mean())
+        avg_loss_pct = cast(float, losing_trades["pnl_pct"].mean())
+        min_loss = cast(float, losing_trades["pnl"].min())
+        min_loss_pct = cast(float, losing_trades["pnl_pct"].min())
+        print(f"  Avg Loss:         ${avg_loss:.2f} ({avg_loss_pct:.2f}%)")
+        print(f"  Largest Loss:     ${min_loss:.2f} ({min_loss_pct:.2f}%)")
 
     # Holding period analysis
+    avg_bars = cast(float, trades_df["bars_held"].mean())
+    min_bars = cast(int, trades_df["bars_held"].min())
+    max_bars = cast(int, trades_df["bars_held"].max())
     print("\nHolding Period:")
-    print(f"  Avg Bars Held:    {trades_df['bars_held'].mean():.1f}")
-    print(f"  Min Bars Held:    {trades_df['bars_held'].min()}")
-    print(f"  Max Bars Held:    {trades_df['bars_held'].max()}")
+    print(f"  Avg Bars Held:    {avg_bars:.1f}")
+    print(f"  Min Bars Held:    {min_bars}")
+    print(f"  Max Bars Held:    {max_bars}")
 
     # Best and worst trades
     print("\nTop 3 Winning Trades:")
@@ -140,7 +154,7 @@ def analyze_trades(trades_df: pl.DataFrame):
     print("\n" + "=" * 80)
 
 
-def main():
+def main() -> None:
     """Run trade analysis example."""
     # Generate sample OHLCV data
     np.random.seed(42)

@@ -12,14 +12,20 @@ from polarbtest.core import Engine, Portfolio, Strategy
 # ---------------------------------------------------------------------------
 
 
-def _make_portfolio(**kwargs) -> Portfolio:
+def _make_portfolio(**kwargs: object) -> Portfolio:
     """Create a Portfolio with sensible defaults and apply kwargs."""
-    defaults = {"initial_cash": 100_000.0, "commission": 0.0, "slippage": 0.0}
+    defaults: dict[str, object] = {"initial_cash": 100_000.0, "commission": 0.0, "slippage": 0.0}
     defaults.update(kwargs)
-    return Portfolio(**defaults)
+    return Portfolio(**defaults)  # type: ignore[arg-type]
 
 
-def _update(portfolio: Portfolio, prices: dict[str, float], bar: int = 0, ohlc: dict | None = None, ts: object = None):
+def _update(
+    portfolio: Portfolio,
+    prices: dict[str, float],
+    bar: int = 0,
+    ohlc: dict[str, dict[str, float]] | None = None,
+    ts: object = None,
+) -> None:
     """Shortcut to update portfolio prices."""
     if ohlc is None:
         ohlc = {asset: {"open": p, "high": p, "low": p, "close": p} for asset, p in prices.items()}

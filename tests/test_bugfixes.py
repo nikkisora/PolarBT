@@ -50,6 +50,7 @@ class TestSLTPFillPrice:
         filled_orders = [o for o in portfolio.orders.values() if o.is_filled() and o.size < 0]
         assert len(filled_orders) == 1
         fill_price = filled_orders[0].filled_price
+        assert fill_price is not None
         # Should fill at 95 * (1 - slippage) = 94.905, NOT at 98
         expected = 95.0 * (1 - 0.001)
         assert abs(fill_price - expected) < 0.01
@@ -75,6 +76,7 @@ class TestSLTPFillPrice:
         filled_orders = [o for o in portfolio.orders.values() if o.is_filled() and o.size < 0]
         assert len(filled_orders) == 1
         fill_price = filled_orders[0].filled_price
+        assert fill_price is not None
         expected = 110.0 * (1 - 0.001)  # sell with slippage
         assert abs(fill_price - expected) < 0.01
 
@@ -102,6 +104,7 @@ class TestSLTPFillPrice:
         filled_orders = [o for o in portfolio.orders.values() if o.is_filled() and o.size < 0]
         assert len(filled_orders) == 1
         fill_price = filled_orders[0].filled_price
+        assert fill_price is not None
         expected = 95.0 * (1 - 0.001)
         assert abs(fill_price - expected) < 0.01
 
@@ -126,6 +129,7 @@ class TestSLTPFillPrice:
         filled_orders = [o for o in portfolio.orders.values() if o.is_filled() and o.size > 0]
         assert len(filled_orders) == 1
         fill_price = filled_orders[0].filled_price
+        assert fill_price is not None
         expected = 105.0 * (1 + 0.001)  # buy with slippage
         assert abs(fill_price - expected) < 0.01
 
@@ -343,6 +347,7 @@ class TestEquityCurveWarmup:
         engine.run()
 
         # With 50 bars and 10 warmup, equity should have 40 entries
+        assert engine.portfolio is not None
         assert len(engine.portfolio.equity_curve) == 40
 
 

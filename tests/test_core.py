@@ -107,6 +107,7 @@ class TestPortfolio:
         # Order is created but should be rejected on execution
         assert order_id is not None
         order = portfolio.get_order(order_id)
+        assert order is not None
         # With order_delay=0, order is executed immediately and rejected
         from polarbtest.orders import OrderStatus
 
@@ -122,6 +123,7 @@ class TestPortfolio:
         order_id = portfolio.order("BTC", -1.0)
         assert order_id is not None
         order = portfolio.get_order(order_id)
+        assert order is not None
         from polarbtest.orders import OrderStatus
 
         assert order.status == OrderStatus.FILLED

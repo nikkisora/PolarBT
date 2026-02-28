@@ -28,6 +28,7 @@ class TestOrderExpiry:
             portfolio.update_prices({"BTC": 50000}, bar_index=bar)
 
         order = portfolio.get_order(order_id)
+        assert order is not None
         assert order.status == OrderStatus.PENDING  # Still active
 
     def test_day_order_expires_after_bars(self):
@@ -42,22 +43,26 @@ class TestOrderExpiry:
         assert order_id is not None
 
         order = portfolio.get_order(order_id)
+        assert order is not None
         assert order.valid_until == 2  # Expires at bar 2 (0 + 2)
         assert order.status == OrderStatus.PENDING
 
         # Bar 1 - order should still be active
         portfolio.update_prices({"BTC": 50000}, bar_index=1)
         order = portfolio.get_order(order_id)
+        assert order is not None
         assert order.status == OrderStatus.PENDING
 
         # Bar 2 - order should still be active (expires AFTER bar 2)
         portfolio.update_prices({"BTC": 50000}, bar_index=2)
         order = portfolio.get_order(order_id)
+        assert order is not None
         assert order.status == OrderStatus.PENDING
 
         # Bar 3 - order should be expired
         portfolio.update_prices({"BTC": 50000}, bar_index=3)
         order = portfolio.get_order(order_id)
+        assert order is not None
         assert order.status == OrderStatus.EXPIRED
 
     def test_day_order_default_expiry(self):
@@ -72,16 +77,19 @@ class TestOrderExpiry:
         assert order_id is not None
 
         order = portfolio.get_order(order_id)
+        assert order is not None
         assert order.valid_until == 1  # Expires after bar 1
 
         # Bar 1 - order should still be pending
         portfolio.update_prices({"BTC": 50000}, bar_index=1)
         order = portfolio.get_order(order_id)
+        assert order is not None
         assert order.status == OrderStatus.PENDING
 
         # Bar 2 - order should be expired
         portfolio.update_prices({"BTC": 50000}, bar_index=2)
         order = portfolio.get_order(order_id)
+        assert order is not None
         assert order.status == OrderStatus.EXPIRED
 
     def test_expired_order_not_filled(self):
@@ -93,6 +101,7 @@ class TestOrderExpiry:
 
         # Place Day order that expires after 1 bar
         order_id = portfolio.order_day("BTC", 0.1, limit_price=49000, bars_valid=1)
+        assert order_id is not None
 
         # Advance to expiry without hitting limit
         portfolio.update_prices({"BTC": 50000}, bar_index=1)
@@ -100,6 +109,7 @@ class TestOrderExpiry:
         # Bar 2 - order expires
         portfolio.update_prices({"BTC": 50000}, bar_index=2)
         order = portfolio.get_order(order_id)
+        assert order is not None
         assert order.status == OrderStatus.EXPIRED
 
         # Bar 3 - price hits limit, but order already expired
@@ -109,6 +119,7 @@ class TestOrderExpiry:
 
         # Order should remain expired, not filled
         order = portfolio.get_order(order_id)
+        assert order is not None
         assert order.status == OrderStatus.EXPIRED
         assert portfolio.get_position("BTC") == 0.0
 
@@ -123,6 +134,7 @@ class TestOrderExpiry:
 
         # Place Day order that expires after 2 bars
         order_id = portfolio.order_day("BTC", 0.1, limit_price=49000, bars_valid=2)
+        assert order_id is not None
 
         # Bar 1 - price hits limit
         portfolio.update_prices(
@@ -131,12 +143,14 @@ class TestOrderExpiry:
 
         # Order should be filled
         order = portfolio.get_order(order_id)
+        assert order is not None
         assert order.status == OrderStatus.FILLED
         assert portfolio.get_position("BTC") == 0.1
 
         # Bar 2 - order already filled, so expiry doesn't matter
         portfolio.update_prices({"BTC": 49000}, bar_index=2)
         order = portfolio.get_order(order_id)
+        assert order is not None
         assert order.status == OrderStatus.FILLED
 
     def test_multiple_day_orders_expiry(self):
@@ -150,30 +164,57 @@ class TestOrderExpiry:
         order1_id = portfolio.order_day("BTC", 0.01, limit_price=49000, bars_valid=1)
         order2_id = portfolio.order_day("BTC", 0.01, limit_price=48000, bars_valid=2)
         order3_id = portfolio.order_day("BTC", 0.01, limit_price=47000, bars_valid=3)
+        assert order1_id is not None
+        assert order2_id is not None
+        assert order3_id is not None
 
         # Bar 1
         portfolio.update_prices({"BTC": 50000}, bar_index=1)
-        assert portfolio.get_order(order1_id).status == OrderStatus.PENDING
-        assert portfolio.get_order(order2_id).status == OrderStatus.PENDING
-        assert portfolio.get_order(order3_id).status == OrderStatus.PENDING
+        order1 = portfolio.get_order(order1_id)
+        order2 = portfolio.get_order(order2_id)
+        order3 = portfolio.get_order(order3_id)
+        assert order1 is not None
+        assert order2 is not None
+        assert order3 is not None
+        assert order1.status == OrderStatus.PENDING
+        assert order2.status == OrderStatus.PENDING
+        assert order3.status == OrderStatus.PENDING
 
         # Bar 2 - order1 expires
         portfolio.update_prices({"BTC": 50000}, bar_index=2)
-        assert portfolio.get_order(order1_id).status == OrderStatus.EXPIRED
-        assert portfolio.get_order(order2_id).status == OrderStatus.PENDING
-        assert portfolio.get_order(order3_id).status == OrderStatus.PENDING
+        order1 = portfolio.get_order(order1_id)
+        order2 = portfolio.get_order(order2_id)
+        order3 = portfolio.get_order(order3_id)
+        assert order1 is not None
+        assert order2 is not None
+        assert order3 is not None
+        assert order1.status == OrderStatus.EXPIRED
+        assert order2.status == OrderStatus.PENDING
+        assert order3.status == OrderStatus.PENDING
 
         # Bar 3 - order2 expires
         portfolio.update_prices({"BTC": 50000}, bar_index=3)
-        assert portfolio.get_order(order1_id).status == OrderStatus.EXPIRED
-        assert portfolio.get_order(order2_id).status == OrderStatus.EXPIRED
-        assert portfolio.get_order(order3_id).status == OrderStatus.PENDING
+        order1 = portfolio.get_order(order1_id)
+        order2 = portfolio.get_order(order2_id)
+        order3 = portfolio.get_order(order3_id)
+        assert order1 is not None
+        assert order2 is not None
+        assert order3 is not None
+        assert order1.status == OrderStatus.EXPIRED
+        assert order2.status == OrderStatus.EXPIRED
+        assert order3.status == OrderStatus.PENDING
 
         # Bar 4 - order3 expires
         portfolio.update_prices({"BTC": 50000}, bar_index=4)
-        assert portfolio.get_order(order1_id).status == OrderStatus.EXPIRED
-        assert portfolio.get_order(order2_id).status == OrderStatus.EXPIRED
-        assert portfolio.get_order(order3_id).status == OrderStatus.EXPIRED
+        order1 = portfolio.get_order(order1_id)
+        order2 = portfolio.get_order(order2_id)
+        order3 = portfolio.get_order(order3_id)
+        assert order1 is not None
+        assert order2 is not None
+        assert order3 is not None
+        assert order1.status == OrderStatus.EXPIRED
+        assert order2.status == OrderStatus.EXPIRED
+        assert order3.status == OrderStatus.EXPIRED
 
     def test_regular_order_is_gtc(self):
         """Test that regular order() behaves as GTC."""
@@ -184,8 +225,10 @@ class TestOrderExpiry:
 
         # Regular order without expiry
         order_id = portfolio.order("BTC", 0.1, limit_price=49000)
+        assert order_id is not None
 
         order = portfolio.get_order(order_id)
+        assert order is not None
         assert order.valid_until is None  # GTC behavior
 
         # Advance many bars
@@ -194,6 +237,7 @@ class TestOrderExpiry:
 
         # Order should still be pending
         order = portfolio.get_order(order_id)
+        assert order is not None
         assert order.status == OrderStatus.PENDING
 
 
@@ -212,7 +256,9 @@ class TestDayOrderAutoExpiry:
 
         # Place day order - should expire at end of day
         order_id = portfolio.order_day("BTC", 0.1, limit_price=49000)
+        assert order_id is not None
         order = portfolio.get_order(order_id)
+        assert order is not None
 
         # Order should have expiry_date set to 2024-01-15
         assert order.expiry_date is not None
@@ -224,12 +270,14 @@ class TestDayOrderAutoExpiry:
         ts2 = datetime(2024, 1, 15, 15, 30)
         portfolio.update_prices({"BTC": 50000}, bar_index=1, timestamp=ts2)
         order = portfolio.get_order(order_id)
+        assert order is not None
         assert order.status == OrderStatus.PENDING
 
         # Day 2: 2024-01-16 09:30 - order should expire
         ts3 = datetime(2024, 1, 16, 9, 30)
         portfolio.update_prices({"BTC": 50000}, bar_index=2, timestamp=ts3)
         order = portfolio.get_order(order_id)
+        assert order is not None
         assert order.status == OrderStatus.EXPIRED
 
     def test_day_order_with_unix_timestamp_expires_on_date_change(self):
@@ -242,19 +290,23 @@ class TestDayOrderAutoExpiry:
 
         # Place day order
         order_id = portfolio.order_day("BTC", 0.1, limit_price=49000)
+        assert order_id is not None
         order = portfolio.get_order(order_id)
+        assert order is not None
         assert order.expiry_date is not None
 
         # Same day - order active
         ts2 = 1705326600  # 2024-01-15 15:30:00 UTC
         portfolio.update_prices({"BTC": 50000}, bar_index=1, timestamp=ts2)
         order = portfolio.get_order(order_id)
+        assert order is not None
         assert order.status == OrderStatus.PENDING
 
         # Next day - order expired
         ts3 = 1705391400  # 2024-01-16 09:30:00 UTC
         portfolio.update_prices({"BTC": 50000}, bar_index=2, timestamp=ts3)
         order = portfolio.get_order(order_id)
+        assert order is not None
         assert order.status == OrderStatus.EXPIRED
 
     def test_day_order_fills_before_date_expiry(self):
@@ -273,6 +325,7 @@ class TestDayOrderAutoExpiry:
         )
 
         order_id = portfolio.order_day("BTC", 0.1, limit_price=49000)
+        assert order_id is not None
 
         # Day 1: Price hits limit - order fills
         ts2 = datetime(2024, 1, 15, 15, 30)
@@ -284,6 +337,7 @@ class TestDayOrderAutoExpiry:
         )
 
         order = portfolio.get_order(order_id)
+        assert order is not None
         assert order.status == OrderStatus.FILLED
         assert portfolio.get_position("BTC") == 0.1
 
@@ -291,6 +345,7 @@ class TestDayOrderAutoExpiry:
         ts3 = datetime(2024, 1, 16, 9, 30)
         portfolio.update_prices({"BTC": 49000}, bar_index=2, timestamp=ts3)
         order = portfolio.get_order(order_id)
+        assert order is not None
         assert order.status == OrderStatus.FILLED
 
     def test_day_order_with_bars_per_day_config(self):
@@ -303,7 +358,9 @@ class TestDayOrderAutoExpiry:
 
         # Place day order at start of day
         order_id = portfolio.order_day("BTC", 0.1, limit_price=49000)
+        assert order_id is not None
         order = portfolio.get_order(order_id)
+        assert order is not None
 
         # Should expire at end of day 0 (bar 389)
         # current_bar_in_day = 0 % 390 = 0
@@ -314,11 +371,13 @@ class TestDayOrderAutoExpiry:
         # Advance to bar 389 - still active
         portfolio.update_prices({"BTC": 50000}, bar_index=389)
         order = portfolio.get_order(order_id)
+        assert order is not None
         assert order.status == OrderStatus.PENDING
 
         # Bar 390 (start of next day) - expired
         portfolio.update_prices({"BTC": 50000}, bar_index=390)
         order = portfolio.get_order(order_id)
+        assert order is not None
         assert order.status == OrderStatus.EXPIRED
 
     def test_day_order_with_bars_per_day_mid_day(self):
@@ -331,7 +390,9 @@ class TestDayOrderAutoExpiry:
 
         # Place day order mid-day
         order_id = portfolio.order_day("BTC", 0.1, limit_price=49000)
+        assert order_id is not None
         order = portfolio.get_order(order_id)
+        assert order is not None
 
         # Should expire at end of day 0 (bar 389), not bar 490
         # current_bar_in_day = 100 % 390 = 100
@@ -342,11 +403,13 @@ class TestDayOrderAutoExpiry:
         # Advance to bar 389 - still active
         portfolio.update_prices({"BTC": 50000}, bar_index=389)
         order = portfolio.get_order(order_id)
+        assert order is not None
         assert order.status == OrderStatus.PENDING
 
         # Bar 390 - expired
         portfolio.update_prices({"BTC": 50000}, bar_index=390)
         order = portfolio.get_order(order_id)
+        assert order is not None
         assert order.status == OrderStatus.EXPIRED
 
     def test_day_order_with_bars_per_day_second_day(self):
@@ -359,7 +422,9 @@ class TestDayOrderAutoExpiry:
 
         # Place day order on day 1
         order_id = portfolio.order_day("BTC", 0.1, limit_price=49000)
+        assert order_id is not None
         order = portfolio.get_order(order_id)
+        assert order is not None
 
         # Should expire at end of day 1 (bar 779)
         # current_bar_in_day = 450 % 390 = 60
@@ -370,11 +435,13 @@ class TestDayOrderAutoExpiry:
         # Advance to bar 779 - still active
         portfolio.update_prices({"BTC": 50000}, bar_index=779)
         order = portfolio.get_order(order_id)
+        assert order is not None
         assert order.status == OrderStatus.PENDING
 
         # Bar 780 (start of day 2) - expired
         portfolio.update_prices({"BTC": 50000}, bar_index=780)
         order = portfolio.get_order(order_id)
+        assert order is not None
         assert order.status == OrderStatus.EXPIRED
 
     def test_day_order_explicit_bars_valid_overrides_auto(self):
@@ -389,7 +456,9 @@ class TestDayOrderAutoExpiry:
 
         # Explicitly set bars_valid=2 (overrides both timestamp and bars_per_day)
         order_id = portfolio.order_day("BTC", 0.1, limit_price=49000, bars_valid=2)
+        assert order_id is not None
         order = portfolio.get_order(order_id)
+        assert order is not None
 
         # Should use explicit bars_valid
         assert order.valid_until == 2  # 0 + 2
@@ -399,12 +468,14 @@ class TestDayOrderAutoExpiry:
         ts2 = datetime(2024, 1, 15, 10, 30)
         portfolio.update_prices({"BTC": 50000}, bar_index=2, timestamp=ts2)
         order = portfolio.get_order(order_id)
+        assert order is not None
         assert order.status == OrderStatus.PENDING
 
         # Bar 3 - expired
         ts3 = datetime(2024, 1, 15, 11, 30)
         portfolio.update_prices({"BTC": 50000}, bar_index=3, timestamp=ts3)
         order = portfolio.get_order(order_id)
+        assert order is not None
         assert order.status == OrderStatus.EXPIRED
 
     def test_day_order_multiple_orders_different_days(self):
@@ -417,15 +488,19 @@ class TestDayOrderAutoExpiry:
         ts1 = datetime(2024, 1, 15, 9, 30)
         portfolio.update_prices({"BTC": 50000}, bar_index=0, timestamp=ts1)
         order1_id = portfolio.order_day("BTC", 0.1, limit_price=49000)
+        assert order1_id is not None
 
         # Day 2: Place second order
         ts2 = datetime(2024, 1, 16, 9, 30)
         portfolio.update_prices({"BTC": 50000}, bar_index=1, timestamp=ts2)
         order2_id = portfolio.order_day("BTC", 0.1, limit_price=48000)
+        assert order2_id is not None
 
         # Check orders
         order1 = portfolio.get_order(order1_id)
         order2 = portfolio.get_order(order2_id)
+        assert order1 is not None
+        assert order2 is not None
 
         # Order1 should be expired (placed on day 1, now day 2)
         assert order1.status == OrderStatus.EXPIRED
@@ -437,6 +512,7 @@ class TestDayOrderAutoExpiry:
         ts3 = datetime(2024, 1, 17, 9, 30)
         portfolio.update_prices({"BTC": 50000}, bar_index=2, timestamp=ts3)
         order2 = portfolio.get_order(order2_id)
+        assert order2 is not None
         assert order2.status == OrderStatus.EXPIRED
 
     def test_day_order_fallback_to_default(self):
@@ -448,7 +524,9 @@ class TestDayOrderAutoExpiry:
 
         # Place day order - should default to 1 bar
         order_id = portfolio.order_day("BTC", 0.1, limit_price=49000)
+        assert order_id is not None
         order = portfolio.get_order(order_id)
+        assert order is not None
 
         # Should expire after 1 bar
         assert order.valid_until == 1  # 0 + 1
@@ -456,9 +534,11 @@ class TestDayOrderAutoExpiry:
         # Bar 1 - still active
         portfolio.update_prices({"BTC": 50000}, bar_index=1)
         order = portfolio.get_order(order_id)
+        assert order is not None
         assert order.status == OrderStatus.PENDING
 
         # Bar 2 - expired
         portfolio.update_prices({"BTC": 50000}, bar_index=2)
         order = portfolio.get_order(order_id)
+        assert order is not None
         assert order.status == OrderStatus.EXPIRED
