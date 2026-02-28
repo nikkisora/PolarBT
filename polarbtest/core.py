@@ -243,7 +243,7 @@ class Portfolio:
         commission: float | tuple[float, float] = 0.0,
         slippage: float = 0.0,
         order_delay: int = 0,
-        bars_per_day: int | None = None,
+        bars_per_day: float | None = None,
         borrow_rate: float = 0.0,
     ):
         """
@@ -396,6 +396,93 @@ class Portfolio:
         """
         return self.positions.get(asset, 0.0)
 
+    def _close_at_price(self, asset: str, fill_price: float) -> str | None:
+        """Close position with a market order that fills at a specific price.
+
+        Used by SL/TP/trailing stop to fill at the trigger price rather than
+        the bar's close. Slippage is still applied by the execution engine.
+
+        Args:
+            asset: Asset symbol.
+            fill_price: The pre-slippage price at which the order should fill.
+
+        Returns:
+            order_id if order was placed, None otherwise.
+        """
+        position = self.get_position(asset)
+        if position == 0:
+            return None
+        quantity = -position  # reverse the position
+        order_id = self.order(asset, quantity)
+        if order_id is not None:
+            order = self.orders[order_id]
+            # If the order was filled immediately (order_delay=0), we need to
+            # adjust the fill. For delayed orders, set _forced_price so the
+            # execution engine uses it when the order eventually fills.
+            if order.is_filled():
+                # Already filled at market — need to correct the fill price.
+                # Recalculate with the intended price.
+                self._correct_fill_price(order, fill_price)
+            else:
+                order._forced_price = fill_price
+        return order_id
+
+    def _correct_fill_price(self, order: Order, intended_price: float) -> None:
+        """Correct a filled order's price to the intended SL/TP/trailing stop price.
+
+        Reverses the cash effect of the original fill and re-applies it at the
+        correct price (with slippage).
+
+        Args:
+            order: The already-filled order to correct.
+            intended_price: The pre-slippage trigger price.
+        """
+        old_exec_price = order.filled_price
+        if old_exec_price is None:
+            return
+
+        # Calculate new execution price with slippage
+        new_exec_price = (
+            intended_price * (1 + self.slippage) if order.is_buy() else intended_price * (1 - self.slippage)
+        )
+
+        # Calculate cash difference
+        size = abs(order.size)
+        old_gross = size * old_exec_price
+        new_gross = size * new_exec_price
+
+        # Recalculate commission on new gross
+        old_commission = order.commission_paid
+        new_commission = self.commission_fixed + (new_gross * self.commission_percent)
+
+        if order.is_buy():
+            # Buying: cash was decreased by old cost, needs to be decreased by new cost
+            # old: cash -= old_gross + old_commission
+            # new: cash -= new_gross + new_commission
+            cash_adjustment = (old_gross + old_commission) - (new_gross + new_commission)
+            self.cash += cash_adjustment
+        else:
+            # Selling: cash was increased by old proceeds
+            # old: cash += old_gross - old_commission
+            # new: cash += new_gross - new_commission
+            cash_adjustment = (new_gross - new_commission) - (old_gross - old_commission)
+            self.cash += cash_adjustment
+
+        # Update order record
+        slippage_cost = size * abs(new_exec_price - intended_price)
+        order.filled_price = new_exec_price
+        order.commission_paid = new_commission
+        order.slippage_cost = slippage_cost
+
+        # Update trade tracker — correct the exit price of the last trade
+        if self.trade_tracker.trades:
+            last_trade = self.trade_tracker.trades[-1]
+            if last_trade.asset == order.asset:
+                last_trade.exit_price = new_exec_price
+                last_trade.exit_value = last_trade.exit_size * new_exec_price
+                last_trade.exit_commission = new_commission
+                last_trade._calculate_metrics()
+
     def _check_stop_losses(self) -> None:
         """Check if any stop-loss orders should be triggered."""
         for asset in list(self._stop_losses.keys()):
@@ -410,15 +497,13 @@ class Portfolio:
             # Check if stop was hit
             position_size = self.get_position(asset)
             if position_size > 0 and low <= stop_price:
-                # Long position stop hit - close position
-                self.close_position(asset)
-                # Remove stop-loss if it still exists (may have been removed by close_position cleanup)
+                # Long position stop hit - close at stop price
+                self._close_at_price(asset, stop_price)
                 if asset in self._stop_losses:
                     del self._stop_losses[asset]
             elif position_size < 0 and high >= stop_price:
-                # Short position stop hit - close position
-                self.close_position(asset)
-                # Remove stop-loss if it still exists
+                # Short position stop hit - close at stop price
+                self._close_at_price(asset, stop_price)
                 if asset in self._stop_losses:
                     del self._stop_losses[asset]
 
@@ -436,15 +521,13 @@ class Portfolio:
             # Check if take-profit was hit
             position_size = self.get_position(asset)
             if position_size > 0 and high >= target_price:
-                # Long position take-profit hit - close position
-                self.close_position(asset)
-                # Remove take-profit if it still exists (may have been removed by close_position cleanup)
+                # Long position take-profit hit - close at target price
+                self._close_at_price(asset, target_price)
                 if asset in self._take_profits:
                     del self._take_profits[asset]
             elif position_size < 0 and low <= target_price:
-                # Short position take-profit hit - close position
-                self.close_position(asset)
-                # Remove take-profit if it still exists
+                # Short position take-profit hit - close at target price
+                self._close_at_price(asset, target_price)
                 if asset in self._take_profits:
                     del self._take_profits[asset]
 
@@ -582,8 +665,10 @@ class Portfolio:
             return False
 
         # Determine execution price
-        if order.order_type == OrderType.STOP and order.stop_price is not None:
-            price: float = order.stop_price
+        if order._forced_price is not None:
+            price: float = order._forced_price
+        elif order.order_type == OrderType.STOP and order.stop_price is not None:
+            price = order.stop_price
         elif order.order_type == OrderType.LIMIT or (order.order_type == OrderType.STOP_LIMIT and order.triggered):
             if order.limit_price is not None:
                 price = order.limit_price
@@ -607,27 +692,29 @@ class Portfolio:
         # Apply slippage
         execution_price = price * (1 + self.slippage) if order.is_buy() else price * (1 - self.slippage)
 
-        # Calculate costs
-        gross_cost = abs(order.size) * execution_price
-        commission_cost = self.commission_fixed + (gross_cost * self.commission_percent)
-
         # Track old position for trade tracking
         old_position = self.get_position(order.asset)
-
-        # Determine if this is opening/increasing a short position
         current_position = self.positions.get(order.asset, 0.0)
+
+        # Determine if this order crosses zero (reversal) — needs two fixed commissions
+        is_reversal = (order.is_buy() and current_position < 0 and abs(order.size) > abs(current_position)) or (
+            order.is_sell() and current_position > 0 and abs(order.size) > current_position
+        )
+
+        # Calculate costs — charge fixed commission twice for reversals
+        gross_cost = abs(order.size) * execution_price
+        num_fixed = 2 if is_reversal else 1
+        commission_cost = self.commission_fixed * num_fixed + (gross_cost * self.commission_percent)
 
         if order.is_buy():
             if current_position < 0:
-                # Covering a short position (partially or fully)
+                # Covering a short position (partially or fully + possible new long)
                 cover_size = min(abs(order.size), abs(current_position))
                 new_long_size = abs(order.size) - cover_size
 
-                # Cost to cover: buy back shares at execution_price
-                cover_cost = cover_size * execution_price + commission_cost
-                # Cost to open new long (if any)
+                cover_cost = cover_size * execution_price
                 new_long_cost = new_long_size * execution_price
-                total_cost = cover_cost + new_long_cost
+                total_cost = cover_cost + new_long_cost + commission_cost
 
                 if total_cost > self.cash:
                     order.mark_rejected()
@@ -651,12 +738,10 @@ class Portfolio:
                 self.cash += gross_cost - commission_cost
             elif current_position > 0 and sell_size > current_position:
                 # Closing long AND opening short in one order
-                # Proceeds from closing long
-                long_close_proceeds = current_position * execution_price - commission_cost
-                # Short sale proceeds for the remainder
+                long_close_proceeds = current_position * execution_price
                 short_size = sell_size - current_position
                 short_proceeds = short_size * execution_price
-                self.cash += long_close_proceeds + short_proceeds
+                self.cash += long_close_proceeds + short_proceeds - commission_cost
             else:
                 # Opening or increasing a short position — receive sale proceeds
                 self.cash += gross_cost - commission_cost
@@ -735,6 +820,17 @@ class Portfolio:
                 price=price,
                 bar=self._current_bar,
                 timestamp=self._current_timestamp,
+                commission=commission,
+            )
+        # Position increased (same direction, larger size)
+        elif abs(new_position) > abs(old_position) and (
+            (old_position > 0 and new_position > 0) or (old_position < 0 and new_position < 0)
+        ):
+            added_size = abs(new_position) - abs(old_position)
+            self.trade_tracker.on_position_increased(
+                asset=asset,
+                added_size=added_size,
+                price=price,
                 commission=commission,
             )
         # Position reversed (e.g., long -> short)
@@ -884,25 +980,10 @@ class Portfolio:
         if abs(value_delta) < 1e-6:  # Already at target
             return None
 
-        # Account for fees when calculating target quantity
-        # When buying: we pay slippage + commission on the gross cost
-        # When selling: we receive slippage - commission on the gross proceeds
-        if value_delta > 0:  # Buying
-            # For buying: total_cost = quantity * execution_price * (1 + percent_commission) + fixed_commission
-            # We need: total_cost = value_delta
-            # Solving: quantity = (value_delta - fixed_commission) / (execution_price * (1 + percent_commission))
-            execution_price = price * (1 + self.slippage)
-            cost_multiplier = 1 + self.commission_percent
-            quantity_to_buy = (value_delta - self.commission_fixed) / (execution_price * cost_multiplier)
-            target_quantity = current_position + quantity_to_buy
-        else:  # Selling
-            # For selling: net_proceeds = quantity * execution_price * (1 - percent_commission) - fixed_commission
-            # We need: net_proceeds = abs(value_delta)
-            # Solving: quantity = (abs(value_delta) + fixed_commission) / (execution_price * (1 - percent_commission))
-            execution_price = price * (1 - self.slippage)
-            proceeds_multiplier = 1 - self.commission_percent
-            quantity_to_sell = (abs(value_delta) + self.commission_fixed) / (execution_price * proceeds_multiplier)
-            target_quantity = current_position - quantity_to_sell
+        # Calculate target quantity from value delta.
+        # Slippage and commission are handled by the execution engine when the
+        # order fills, so we only need a simple division here.
+        target_quantity = target_value / price
 
         return self.order_target(asset, target_quantity, limit_price)
 
@@ -1033,12 +1114,13 @@ class Portfolio:
         elif self.bars_per_day is not None:
             # Calculate which bar within the current trading day we're on
             # Example: If bars_per_day=390 and current_bar=450, we're on bar 60 of day 1
-            current_bar_in_day = self._current_bar % self.bars_per_day
+            bpd = self.bars_per_day
+            current_bar_in_day = self._current_bar % bpd
             # Calculate bars remaining until end of current day
             # Example: 390 - 60 - 1 = 329 bars until end of day
-            bars_until_eod = self.bars_per_day - current_bar_in_day - 1
+            bars_until_eod = bpd - current_bar_in_day - 1
             # Order expires at end of current trading day
-            order.valid_until = self._current_bar + bars_until_eod
+            order.valid_until = int(self._current_bar + bars_until_eod)
         # Strategy 4: Default to 1 bar
         else:
             order.valid_until = self._current_bar + 1
@@ -1382,8 +1464,8 @@ class Portfolio:
                 stop_triggered = True
 
             if stop_triggered:
-                # Stop was hit - close position and remove trailing stop
-                self.close_position(asset)
+                # Stop was hit - close at the trailing stop price
+                self._close_at_price(asset, old_stop_price)
                 if asset in self._trailing_stops:
                     del self._trailing_stops[asset]
             else:
@@ -1633,7 +1715,7 @@ class Engine:
         warmup: int | str = "auto",
         order_delay: int = 0,
         borrow_rate: float = 0.0,
-        bars_per_day: int | None = None,
+        bars_per_day: float | None = None,
     ):
         """
         Initialize the backtesting engine.
@@ -1779,7 +1861,7 @@ class Engine:
             timestamp_col = "time"
         else:
             # Use index as timestamp
-            processed_data = processed_data.with_row_count("_index")
+            processed_data = processed_data.with_row_index("_index")
             timestamp_col = "_index"
 
         # Call strategy initialization
@@ -1845,8 +1927,8 @@ class Engine:
             if idx >= warmup_periods:
                 self.strategy.next(ctx)
 
-            # Record equity for metrics
-            self.portfolio.record_equity(ctx.timestamp)
+                # Record equity only after warmup to avoid diluting metrics
+                self.portfolio.record_equity(ctx.timestamp)
 
         # Call strategy finalization
         self.strategy.on_finish(self.portfolio)

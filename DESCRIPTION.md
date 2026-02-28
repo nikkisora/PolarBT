@@ -85,7 +85,7 @@ Manages cash, positions, orders, and risk management.
 - `order_gtc(asset, quantity, limit_price=None)` — good-till-cancelled
 - `order_bracket(asset, quantity, stop_loss=None, take_profit=None, ...)` — entry + SL + TP (OCO). SL/TP are set automatically when a pending entry order fills
 
-**Risk Management:**
+**Risk Management** (all fill at trigger price + slippage, not at bar close):
 - `set_stop_loss(asset, stop_price=None, stop_pct=None)`
 - `set_take_profit(asset, target_price=None, target_pct=None)`
 - `set_trailing_stop(asset, trail_pct=None, trail_amount=None)`
@@ -117,6 +117,7 @@ Manages cash, positions, orders, and risk management.
 **Commission:**
 - Percentage only: `commission=0.001` (0.1% per trade)
 - Fixed + percentage: `commission=(5.0, 0.001)` ($5 + 0.1% per trade)
+- Position reversals (long→short, short→long) charge fixed commission twice (one for the close, one for the open)
 
 **Day Order Auto-Expiry** (priority order):
 1. Timestamp-based: expires when date changes (if timestamps available)
@@ -218,7 +219,7 @@ All return Polars expressions for use in `preprocess()`:
 - max_drawdown, volatility, volatility_annualized
 - ulcer_index, tail_ratio
 - max_drawdown_duration, avg_drawdown_duration, drawdown_count
-- win_rate, avg_win, avg_loss, profit_factor
+- daily_win_rate, daily_avg_win, daily_avg_loss, profit_factor
 - initial_equity, final_equity
 
 **Standalone functions:**
@@ -285,7 +286,7 @@ results = backtest(MyStrategy, data, params={...})
 
 ## Test Coverage
 
-278 tests passing. Test files:
+292 tests passing. Test files:
 - test_core.py, test_indicators.py, test_orders.py, test_limit_orders.py
 - test_trades.py, test_runner.py, test_warmup.py
 - test_take_profit.py, test_trailing_stop.py, test_bracket_orders.py
@@ -295,3 +296,4 @@ results = backtest(MyStrategy, data, params={...})
 - test_plotting.py (plot_backtest, plot_returns_distribution, trade markers, HTML export)
 - test_enhanced_metrics.py (ulcer index, tail ratio, information ratio, alpha/beta, drawdown durations, monthly returns, trade-level metrics)
 - test_sizers.py (FixedSizer, PercentSizer, FixedRiskSizer, KellySizer, VolatilitySizer, MaxPositionSizer, order_with_sizer integration)
+- test_bugfixes.py (SL/TP/trailing stop fill prices, reversal commission, position increase tracking, order_target_percent slippage, monthly returns, warmup equity, daily_win_rate rename)

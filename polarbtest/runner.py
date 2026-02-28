@@ -44,7 +44,7 @@ def backtest(
     warmup: int | str = "auto",
     order_delay: int = 0,
     borrow_rate: float = 0.0,
-    bars_per_day: int | None = None,
+    bars_per_day: float | None = None,
 ) -> dict[str, Any]:
     """
     Run a single backtest.
@@ -140,7 +140,7 @@ def _run_backtest_worker(
         int | str,
         int,
         float,
-        int | None,
+        float | None,
     ],
 ) -> BacktestResult:
     """
@@ -210,7 +210,7 @@ def backtest_batch(
     n_jobs: int | None = None,
     verbose: bool = True,
     borrow_rate: float = 0.0,
-    bars_per_day: int | None = None,
+    bars_per_day: float | None = None,
 ) -> pl.DataFrame:
     """
     Run multiple backtests in parallel.
@@ -316,7 +316,7 @@ def optimize(
     n_jobs: int | None = None,
     verbose: bool = True,
     borrow_rate: float = 0.0,
-    bars_per_day: int | None = None,
+    bars_per_day: float | None = None,
 ) -> dict[str, Any]:
     """
     Grid search optimization for strategy parameters.
@@ -405,7 +405,7 @@ def walk_forward_analysis(
     anchored: bool = False,
     verbose: bool = True,
     borrow_rate: float = 0.0,
-    bars_per_day: int | None = None,
+    bars_per_day: float | None = None,
 ) -> pl.DataFrame:
     """
     Perform walk-forward analysis.

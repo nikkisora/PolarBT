@@ -115,6 +115,9 @@ class Order:
     bracket_stop_loss: float | None = None
     bracket_take_profit: float | None = None
 
+    # Internal: forced execution price (used by SL/TP/trailing stop fills)
+    _forced_price: float | None = None
+
     tags: list[str] = field(default_factory=list)
     notes: str = ""
 

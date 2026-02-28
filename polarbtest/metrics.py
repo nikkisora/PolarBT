@@ -127,11 +127,11 @@ def calculate_metrics(equity_df: pl.DataFrame, initial_capital: float) -> dict[s
         "max_drawdown_duration": dd_stats["max_drawdown_duration"],
         "avg_drawdown_duration": dd_stats["avg_drawdown_duration"],
         "drawdown_count": dd_stats["drawdown_count"],
-        # Trade statistics
+        # Daily return statistics
         "num_periods": int(num_periods),
-        "win_rate": float(win_rate),
-        "avg_win": float(avg_win),
-        "avg_loss": float(avg_loss),
+        "daily_win_rate": float(win_rate),
+        "daily_avg_win": float(avg_win),
+        "daily_avg_loss": float(avg_loss),
         "profit_factor": float(profit_factor) if profit_factor != float("inf") else 999.0,
         # Equity curve stats
         "initial_equity": float(initial_capital),
@@ -540,17 +540,13 @@ def monthly_returns(equity_df: pl.DataFrame) -> pl.DataFrame:
     else:
         return pl.DataFrame(schema={"year": pl.Int32, "month": pl.Int32, "return": pl.Float64})
 
-    # Get first and last equity per month
-    monthly = (
-        df.group_by(["year", "month"])
-        .agg(
-            [
-                pl.col("equity").first().alias("start_equity"),
-                pl.col("equity").last().alias("end_equity"),
-            ]
-        )
-        .sort(["year", "month"])
-    )
+    # Get last equity per month (end-of-month value)
+    monthly = df.group_by(["year", "month"]).agg([pl.col("equity").last().alias("end_equity")]).sort(["year", "month"])
+
+    # Use previous month's end equity as the start equity for each month.
+    # For the first month, use the first equity value from the original data.
+    first_equity = float(df["equity"][0])
+    monthly = monthly.with_columns([pl.col("end_equity").shift(1).fill_null(first_equity).alias("start_equity")])
 
     monthly = monthly.with_columns(
         [((pl.col("end_equity") - pl.col("start_equity")) / pl.col("start_equity")).alias("return")]

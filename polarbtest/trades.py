@@ -220,6 +220,33 @@ class TradeTracker:
         if unrealized_pnl > position["mfe"]:
             position["mfe"] = unrealized_pnl
 
+    def on_position_increased(self, asset: str, added_size: float, price: float, commission: float) -> None:
+        """Update average entry price when position size increases.
+
+        Computes a volume-weighted average entry price and adds the
+        additional commission to the running entry commission total.
+
+        Args:
+            asset: Asset symbol.
+            added_size: Additional size added (positive value).
+            price: Execution price of the new portion.
+            commission: Commission paid for this addition.
+        """
+        if asset not in self.open_positions:
+            return
+
+        pos = self.open_positions[asset]
+        old_size = pos["entry_size"]
+        old_value = pos["entry_value"]
+        added_value = added_size * price
+        new_size = old_size + added_size
+        new_value = old_value + added_value
+
+        pos["entry_size"] = new_size
+        pos["entry_value"] = new_value
+        pos["entry_price"] = new_value / new_size if new_size > 0 else price
+        pos["entry_commission"] += commission
+
     def on_position_closed(
         self, asset: str, size_closed: float, price: float, bar: int, timestamp: Any, commission: float
     ) -> Trade | None:
