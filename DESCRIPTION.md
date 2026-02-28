@@ -119,6 +119,13 @@ Manages cash, positions, orders, and risk management.
 - Fixed + percentage: `commission=(5.0, 0.001)` ($5 + 0.1% per trade)
 - Position reversals (long→short, short→long) charge fixed commission twice (one for the close, one for the open)
 
+**Risk Limits:**
+- `max_position_size=0.5` — cap single position at 50% of portfolio value; orders exceeding this are clamped
+- `max_total_exposure=1.5` — cap total absolute exposure at 150% of portfolio value; orders exceeding this are clamped
+- `max_drawdown_stop=0.2` — halt all risk-increasing orders when peak-to-trough drawdown exceeds 20%
+- `daily_loss_limit=0.05` — halt risk-increasing orders when intraday loss exceeds 5%; resets each calendar day
+- Risk-reducing orders (SL, TP, trailing stop, close_position) always execute regardless of limits
+
 **Day Order Auto-Expiry** (priority order):
 1. Timestamp-based: expires when date changes (if timestamps available)
 2. Explicit `bars_valid` parameter
@@ -286,7 +293,7 @@ results = backtest(MyStrategy, data, params={...})
 
 ## Test Coverage
 
-292 tests passing. Test files:
+312 tests passing. Test files:
 - test_core.py, test_indicators.py, test_orders.py, test_limit_orders.py
 - test_trades.py, test_runner.py, test_warmup.py
 - test_take_profit.py, test_trailing_stop.py, test_bracket_orders.py
@@ -296,4 +303,5 @@ results = backtest(MyStrategy, data, params={...})
 - test_plotting.py (plot_backtest, plot_returns_distribution, trade markers, HTML export)
 - test_enhanced_metrics.py (ulcer index, tail ratio, information ratio, alpha/beta, drawdown durations, monthly returns, trade-level metrics)
 - test_sizers.py (FixedSizer, PercentSizer, FixedRiskSizer, KellySizer, VolatilitySizer, MaxPositionSizer, order_with_sizer integration)
+- test_risk_limits.py (max_position_size, max_total_exposure, max_drawdown_stop, daily_loss_limit, Engine integration, trading_halted property)
 - test_bugfixes.py (SL/TP/trailing stop fill prices, reversal commission, position increase tracking, order_target_percent slippage, monthly returns, warmup equity, daily_win_rate rename)

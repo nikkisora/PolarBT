@@ -45,6 +45,10 @@ def backtest(
     order_delay: int = 0,
     borrow_rate: float = 0.0,
     bars_per_day: float | None = None,
+    max_position_size: float | None = None,
+    max_total_exposure: float | None = None,
+    max_drawdown_stop: float | None = None,
+    daily_loss_limit: float | None = None,
 ) -> dict[str, Any]:
     """
     Run a single backtest.
@@ -66,6 +70,10 @@ def backtest(
         order_delay: Number of bars to delay order execution (default 0)
         borrow_rate: Annual borrow rate for short positions (default 0.0)
         bars_per_day: Number of bars in a trading day (default None)
+        max_position_size: Maximum single position size as fraction of portfolio value (default None)
+        max_total_exposure: Maximum total exposure as fraction of portfolio value (default None)
+        max_drawdown_stop: Maximum drawdown before halting trading (default None)
+        daily_loss_limit: Maximum daily loss before halting trading for the day (default None)
 
     Returns:
         Dictionary containing backtest results and metrics
@@ -107,6 +115,10 @@ def backtest(
             order_delay=order_delay,
             borrow_rate=borrow_rate,
             bars_per_day=bars_per_day,
+            max_position_size=max_position_size,
+            max_total_exposure=max_total_exposure,
+            max_drawdown_stop=max_drawdown_stop,
+            daily_loss_limit=daily_loss_limit,
         )
 
         results = engine.run()
@@ -141,6 +153,10 @@ def _run_backtest_worker(
         int,
         float,
         float | None,
+        float | None,
+        float | None,
+        float | None,
+        float | None,
     ],
 ) -> BacktestResult:
     """
@@ -148,7 +164,8 @@ def _run_backtest_worker(
 
     Args:
         args: Tuple of (strategy_class, data, params, initial_cash, commission, slippage,
-              price_columns, warmup, order_delay, borrow_rate, bars_per_day)
+              price_columns, warmup, order_delay, borrow_rate, bars_per_day,
+              max_position_size, max_total_exposure, max_drawdown_stop, daily_loss_limit)
 
     Returns:
         BacktestResult object
@@ -165,6 +182,10 @@ def _run_backtest_worker(
         order_delay,
         borrow_rate,
         bars_per_day,
+        max_position_size,
+        max_total_exposure,
+        max_drawdown_stop,
+        daily_loss_limit,
     ) = args
 
     try:
@@ -180,6 +201,10 @@ def _run_backtest_worker(
             order_delay=order_delay,
             borrow_rate=borrow_rate,
             bars_per_day=bars_per_day,
+            max_position_size=max_position_size,
+            max_total_exposure=max_total_exposure,
+            max_drawdown_stop=max_drawdown_stop,
+            daily_loss_limit=daily_loss_limit,
         )
 
         return BacktestResult(
@@ -211,6 +236,10 @@ def backtest_batch(
     verbose: bool = True,
     borrow_rate: float = 0.0,
     bars_per_day: float | None = None,
+    max_position_size: float | None = None,
+    max_total_exposure: float | None = None,
+    max_drawdown_stop: float | None = None,
+    daily_loss_limit: float | None = None,
 ) -> pl.DataFrame:
     """
     Run multiple backtests in parallel.
@@ -232,6 +261,10 @@ def backtest_batch(
         verbose: Print progress (default True)
         borrow_rate: Annual borrow rate for short positions (default 0.0)
         bars_per_day: Number of bars in a trading day (default None)
+        max_position_size: Maximum single position size as fraction of portfolio value (default None)
+        max_total_exposure: Maximum total exposure as fraction of portfolio value (default None)
+        max_drawdown_stop: Maximum drawdown before halting trading (default None)
+        daily_loss_limit: Maximum daily loss before halting for the day (default None)
 
     Returns:
         Polars DataFrame with results for each parameter set
@@ -267,6 +300,10 @@ def backtest_batch(
             order_delay,
             borrow_rate,
             bars_per_day,
+            max_position_size,
+            max_total_exposure,
+            max_drawdown_stop,
+            daily_loss_limit,
         )
         for params in param_sets
     ]
@@ -317,6 +354,10 @@ def optimize(
     verbose: bool = True,
     borrow_rate: float = 0.0,
     bars_per_day: float | None = None,
+    max_position_size: float | None = None,
+    max_total_exposure: float | None = None,
+    max_drawdown_stop: float | None = None,
+    daily_loss_limit: float | None = None,
 ) -> dict[str, Any]:
     """
     Grid search optimization for strategy parameters.
@@ -337,6 +378,10 @@ def optimize(
         verbose: Print progress
         borrow_rate: Annual borrow rate for short positions (default 0.0)
         bars_per_day: Number of bars in a trading day (default None)
+        max_position_size: Maximum single position size as fraction of portfolio value (default None)
+        max_total_exposure: Maximum total exposure as fraction of portfolio value (default None)
+        max_drawdown_stop: Maximum drawdown before halting trading (default None)
+        daily_loss_limit: Maximum daily loss before halting for the day (default None)
 
     Returns:
         Dictionary with best parameters and results
@@ -377,6 +422,10 @@ def optimize(
         verbose=verbose,
         borrow_rate=borrow_rate,
         bars_per_day=bars_per_day,
+        max_position_size=max_position_size,
+        max_total_exposure=max_total_exposure,
+        max_drawdown_stop=max_drawdown_stop,
+        daily_loss_limit=daily_loss_limit,
     )
 
     # Find best result
@@ -406,6 +455,10 @@ def walk_forward_analysis(
     verbose: bool = True,
     borrow_rate: float = 0.0,
     bars_per_day: float | None = None,
+    max_position_size: float | None = None,
+    max_total_exposure: float | None = None,
+    max_drawdown_stop: float | None = None,
+    daily_loss_limit: float | None = None,
 ) -> pl.DataFrame:
     """
     Perform walk-forward analysis.
@@ -488,6 +541,10 @@ def walk_forward_analysis(
             verbose=False,
             borrow_rate=borrow_rate,
             bars_per_day=bars_per_day,
+            max_position_size=max_position_size,
+            max_total_exposure=max_total_exposure,
+            max_drawdown_stop=max_drawdown_stop,
+            daily_loss_limit=daily_loss_limit,
         )
 
         # Test on out-of-sample data
@@ -503,6 +560,10 @@ def walk_forward_analysis(
             order_delay=order_delay,
             borrow_rate=borrow_rate,
             bars_per_day=bars_per_day,
+            max_position_size=max_position_size,
+            max_total_exposure=max_total_exposure,
+            max_drawdown_stop=max_drawdown_stop,
+            daily_loss_limit=daily_loss_limit,
         )
 
         results.append(

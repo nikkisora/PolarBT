@@ -44,13 +44,13 @@ Remaining work organized by priority. Each item is a self-contained task.
 - [x] Implement `MaxPositionSizer` — wrapper that caps position size
 - [x] Add `order_with_sizer()` method to Portfolio
 
-## 5. Risk Limits
+## 5. Risk Limits ✓ COMPLETE
 
-- [ ] Add `max_position_size` parameter to Portfolio (cap single position as % of portfolio)
-- [ ] Add `max_total_exposure` parameter (cap total exposure as % of portfolio)
-- [ ] Add `max_drawdown_stop` parameter (halt trading at X% drawdown)
-- [ ] Add `daily_loss_limit` parameter (halt trading at X% daily loss)
-- [ ] Enforce limits in order execution path
+- [x] Add `max_position_size` parameter to Portfolio (cap single position as % of portfolio)
+- [x] Add `max_total_exposure` parameter (cap total exposure as % of portfolio)
+- [x] Add `max_drawdown_stop` parameter (halt trading at X% drawdown)
+- [x] Add `daily_loss_limit` parameter (halt trading at X% daily loss)
+- [x] Enforce limits in order execution path
 
 ## 6. Commission Models
 

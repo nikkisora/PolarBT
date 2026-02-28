@@ -245,6 +245,10 @@ class Portfolio:
         order_delay: int = 0,
         bars_per_day: float | None = None,
         borrow_rate: float = 0.0,
+        max_position_size: float | None = None,
+        max_total_exposure: float | None = None,
+        max_drawdown_stop: float | None = None,
+        daily_loss_limit: float | None = None,
     ):
         """
         Initialize a new portfolio.
@@ -263,6 +267,20 @@ class Portfolio:
                         Cost is deducted from cash each bar based on the short position value.
                         Daily rate = borrow_rate / 252 (trading days). For intraday bars,
                         set bars_per_day so the cost is spread across bars within a day.
+            max_position_size: Maximum single position size as fraction of portfolio value
+                              (e.g., 0.5 = 50%). Orders that would exceed this are clamped.
+                              None means no limit.
+            max_total_exposure: Maximum total exposure as fraction of portfolio value
+                               (e.g., 1.5 = 150%). Sum of absolute position values / portfolio value.
+                               Orders that would exceed this are clamped. None means no limit.
+            max_drawdown_stop: Maximum drawdown before halting trading (e.g., 0.2 = 20%).
+                              When peak-to-trough drawdown exceeds this, new risk-increasing orders
+                              are rejected. Risk-reducing orders (SL/TP/closes) still execute.
+                              None means no limit.
+            daily_loss_limit: Maximum daily loss before halting trading for the day (e.g., 0.05 = 5%).
+                             When intraday loss exceeds this percentage of start-of-day equity,
+                             new risk-increasing orders are rejected until the next day.
+                             None means no limit.
         """
         self.initial_cash = initial_cash
         self.cash = initial_cash
@@ -279,6 +297,19 @@ class Portfolio:
         self.order_delay = order_delay
         self.bars_per_day = bars_per_day
         self.borrow_rate = borrow_rate
+
+        # Risk limits
+        self.max_position_size = max_position_size
+        self.max_total_exposure = max_total_exposure
+        self.max_drawdown_stop = max_drawdown_stop
+        self.daily_loss_limit = daily_loss_limit
+
+        # Risk limit state
+        self._peak_equity: float = initial_cash
+        self._trading_halted: bool = False
+        self._daily_halted: bool = False
+        self._day_start_equity: float = initial_cash
+        self._last_date: Any = None
 
         # Asset positions: {asset_name: quantity}
         self.positions: dict[str, float] = defaultdict(float)
@@ -335,6 +366,9 @@ class Portfolio:
         if self.borrow_rate > 0:
             self._deduct_borrow_costs()
 
+        # Update risk limit state (drawdown halt, daily loss halt)
+        self._update_risk_limits()
+
         # Update MAE/MFE for open positions
         for asset in self.trade_tracker.open_positions:
             if asset in prices:
@@ -373,6 +407,155 @@ class Portfolio:
                 short_value = abs(qty) * price
                 borrow_cost = short_value * bar_rate
                 self.cash -= borrow_cost
+
+    def _update_risk_limits(self) -> None:
+        """Update risk limit state: peak equity, drawdown halt, daily loss halt."""
+        current_equity = self.get_value()
+
+        # Update peak equity for drawdown tracking
+        if current_equity > self._peak_equity:
+            self._peak_equity = current_equity
+
+        # Check max drawdown stop
+        if self.max_drawdown_stop is not None and self._peak_equity > 0:
+            drawdown = (self._peak_equity - current_equity) / self._peak_equity
+            if drawdown >= self.max_drawdown_stop:
+                self._trading_halted = True
+
+        # Check daily loss limit
+        if self.daily_loss_limit is not None:
+            current_date = _extract_date(self._current_timestamp) if self._current_timestamp is not None else None
+            if current_date is not None and current_date != self._last_date:
+                # New day — reset daily halt and record start-of-day equity
+                self._daily_halted = False
+                self._day_start_equity = current_equity
+                self._last_date = current_date
+
+            if self._day_start_equity > 0:
+                daily_loss = (self._day_start_equity - current_equity) / self._day_start_equity
+                if daily_loss >= self.daily_loss_limit:
+                    self._daily_halted = True
+
+    def _is_order_risk_reducing(self, asset: str, quantity: float) -> bool:
+        """Check if an order reduces risk (moves position toward zero).
+
+        Args:
+            asset: Asset symbol.
+            quantity: Order quantity (positive=buy, negative=sell).
+
+        Returns:
+            True if the order reduces or closes the position.
+        """
+        current = self.get_position(asset)
+        if current == 0:
+            return False
+        # Reducing: selling a long or buying back a short, and not exceeding zero
+        if current > 0 and quantity < 0 and abs(quantity) <= abs(current):
+            return True
+        return current < 0 and quantity > 0 and abs(quantity) <= abs(current)
+
+    def _get_total_exposure(self) -> float:
+        """Get total exposure as fraction of portfolio value.
+
+        Returns:
+            Sum of absolute position values divided by portfolio value.
+        """
+        portfolio_value = self.get_value()
+        if portfolio_value <= 0:
+            return 0.0
+        total_abs_value = sum(abs(qty) * self._current_prices.get(asset, 0.0) for asset, qty in self.positions.items())
+        return total_abs_value / portfolio_value
+
+    def _clamp_order_for_position_limit(self, asset: str, quantity: float, price: float) -> float:
+        """Clamp order quantity so the resulting position doesn't exceed max_position_size.
+
+        Args:
+            asset: Asset symbol.
+            quantity: Desired order quantity.
+            price: Expected execution price.
+
+        Returns:
+            Clamped quantity (may be 0 if fully blocked).
+        """
+        if self.max_position_size is None:
+            return quantity
+        portfolio_value = self.get_value()
+        if portfolio_value <= 0:
+            return 0.0
+        max_value = self.max_position_size * portfolio_value
+        max_qty = max_value / price if price > 0 else 0.0
+
+        current = self.get_position(asset)
+        new_position = current + quantity
+        if abs(new_position) * price <= max_value:
+            return quantity
+
+        # Clamp: allow up to max_qty in the direction of new_position
+        allowed = max_qty - current if new_position > 0 else -(max_qty + current)
+
+        # If clamping reverses direction (sign mismatch), return 0
+        if quantity > 0:
+            return max(0.0, allowed)
+        else:
+            return min(0.0, allowed)
+
+    def _clamp_order_for_exposure_limit(self, asset: str, quantity: float, price: float) -> float:
+        """Clamp order quantity so total exposure doesn't exceed max_total_exposure.
+
+        Args:
+            asset: Asset symbol.
+            quantity: Desired order quantity.
+            price: Expected execution price.
+
+        Returns:
+            Clamped quantity (may be 0 if fully blocked).
+        """
+        if self.max_total_exposure is None:
+            return quantity
+        portfolio_value = self.get_value()
+        if portfolio_value <= 0:
+            return 0.0
+
+        # Calculate current total abs exposure excluding this asset
+        current_other_exposure = sum(
+            abs(qty) * self._current_prices.get(a, 0.0) for a, qty in self.positions.items() if a != asset
+        )
+        current_asset_position = self.get_position(asset)
+        new_position = current_asset_position + quantity
+        new_asset_exposure = abs(new_position) * price
+        new_total_exposure = current_other_exposure + new_asset_exposure
+
+        max_exposure_value = self.max_total_exposure * portfolio_value
+        if new_total_exposure <= max_exposure_value:
+            return quantity
+
+        # How much room do we have?
+        room = max_exposure_value - current_other_exposure
+        if room <= 0:
+            # If we're already reducing exposure, allow it
+            if abs(new_position) < abs(current_asset_position):
+                return quantity
+            return 0.0
+
+        # Max allowed abs position for this asset
+        max_asset_qty = room / price if price > 0 else 0.0
+
+        if new_position > 0:
+            allowed_qty = max_asset_qty - current_asset_position
+        elif new_position < 0:
+            allowed_qty = -(max_asset_qty + current_asset_position)
+        else:
+            return quantity  # going to zero is always fine
+
+        if quantity > 0:
+            return max(0.0, min(quantity, allowed_qty))
+        else:
+            return min(0.0, max(quantity, allowed_qty))
+
+    @property
+    def trading_halted(self) -> bool:
+        """Whether trading is halted due to risk limits."""
+        return self._trading_halted or self._daily_halted
 
     def get_value(self) -> float:
         """
@@ -692,6 +875,16 @@ class Portfolio:
         # Apply slippage
         execution_price = price * (1 + self.slippage) if order.is_buy() else price * (1 - self.slippage)
 
+        # Enforce position size and exposure limits (skip for risk-reducing orders)
+        if not order._risk_order and not self._is_order_risk_reducing(order.asset, order.size):
+            clamped = self._clamp_order_for_position_limit(order.asset, order.size, execution_price)
+            clamped = self._clamp_order_for_exposure_limit(order.asset, clamped, execution_price)
+            if abs(clamped) < 1e-10:
+                order.mark_rejected()
+                return False
+            if abs(clamped) != abs(order.size):
+                order.size = clamped
+
         # Track old position for trade tracking
         old_position = self.get_position(order.asset)
         current_position = self.positions.get(order.asset, 0.0)
@@ -875,6 +1068,10 @@ class Portfolio:
             order_id if order was placed, None if rejected
         """
         if quantity == 0:
+            return None
+
+        # Reject risk-increasing orders when trading is halted
+        if self.trading_halted and not self._is_order_risk_reducing(asset, quantity):
             return None
 
         # Reject STOP/STOP_LIMIT orders without a stop_price
@@ -1716,6 +1913,10 @@ class Engine:
         order_delay: int = 0,
         borrow_rate: float = 0.0,
         bars_per_day: float | None = None,
+        max_position_size: float | None = None,
+        max_total_exposure: float | None = None,
+        max_drawdown_stop: float | None = None,
+        daily_loss_limit: float | None = None,
     ):
         """
         Initialize the backtesting engine.
@@ -1734,6 +1935,10 @@ class Engine:
             order_delay: Number of bars to delay order execution (default 0, max realism is 1)
             borrow_rate: Annual borrow rate for short positions (e.g., 0.02 = 2% per year)
             bars_per_day: Number of bars in a trading day (used for day order expiry and borrow cost calculation)
+            max_position_size: Maximum single position size as fraction of portfolio value (e.g., 0.5 = 50%)
+            max_total_exposure: Maximum total exposure as fraction of portfolio value (e.g., 1.5 = 150%)
+            max_drawdown_stop: Maximum drawdown before halting trading (e.g., 0.2 = 20%)
+            daily_loss_limit: Maximum daily loss before halting trading for the day (e.g., 0.05 = 5%)
         """
         self.strategy = strategy
         self.initial_cash = initial_cash
@@ -1741,6 +1946,10 @@ class Engine:
         self.slippage = slippage
         self.borrow_rate = borrow_rate
         self.bars_per_day = bars_per_day
+        self.max_position_size = max_position_size
+        self.max_total_exposure = max_total_exposure
+        self.max_drawdown_stop = max_drawdown_stop
+        self.daily_loss_limit = daily_loss_limit
 
         # Validate warmup parameter
         if isinstance(warmup, str):
@@ -1841,6 +2050,10 @@ class Engine:
             order_delay=self.order_delay,
             borrow_rate=self.borrow_rate,
             bars_per_day=self.bars_per_day,
+            max_position_size=self.max_position_size,
+            max_total_exposure=self.max_total_exposure,
+            max_drawdown_stop=self.max_drawdown_stop,
+            daily_loss_limit=self.daily_loss_limit,
         )
 
         # Preprocess data using strategy

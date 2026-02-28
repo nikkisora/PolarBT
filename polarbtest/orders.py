@@ -118,6 +118,10 @@ class Order:
     # Internal: forced execution price (used by SL/TP/trailing stop fills)
     _forced_price: float | None = None
 
+    # Internal: marks orders placed by risk management (SL/TP/trailing stop, close_position)
+    # These orders bypass risk limit checks since they reduce risk
+    _risk_order: bool = False
+
     tags: list[str] = field(default_factory=list)
     notes: str = ""
 
