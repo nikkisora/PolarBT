@@ -100,6 +100,15 @@ def calculate_metrics(equity_df: pl.DataFrame, initial_capital: float) -> dict[s
 
     profit_factor = total_wins / total_losses if total_losses > 0 else float("inf") if total_wins > 0 else 0.0
 
+    # Ulcer Index
+    ui = ulcer_index(equity_df)
+
+    # Tail Ratio
+    tr = tail_ratio(equity_df)
+
+    # Drawdown duration stats
+    dd_stats = drawdown_duration_stats(equity_df)
+
     return {
         # Returns
         "total_return": float(total_return),
@@ -112,6 +121,12 @@ def calculate_metrics(equity_df: pl.DataFrame, initial_capital: float) -> dict[s
         # Volatility
         "volatility": float(std_return) if len(returns) > 0 else 0.0,
         "volatility_annualized": float(std_return * np.sqrt(252)) if len(returns) > 0 else 0.0,
+        # Enhanced metrics
+        "ulcer_index": ui,
+        "tail_ratio": tr,
+        "max_drawdown_duration": dd_stats["max_drawdown_duration"],
+        "avg_drawdown_duration": dd_stats["avg_drawdown_duration"],
+        "drawdown_count": dd_stats["drawdown_count"],
         # Trade statistics
         "num_periods": int(num_periods),
         "win_rate": float(win_rate),
@@ -309,7 +324,7 @@ def value_at_risk(equity_df: pl.DataFrame, confidence: float = 0.95) -> float:
         return 0.0
 
     quantile_val = returns.quantile(1 - confidence)
-    var = abs(float(quantile_val)) if quantile_val is not None else 0.0
+    var = abs(float(quantile_val)) if quantile_val is not None else 0.0  # type: ignore[arg-type]
     return var
 
 
@@ -336,3 +351,279 @@ def conditional_value_at_risk(equity_df: pl.DataFrame, confidence: float = 0.95)
         mean_val = tail_losses.mean()
         return abs(float(mean_val)) if mean_val is not None else 0.0  # type: ignore[arg-type]
     return 0.0
+
+
+def ulcer_index(equity_df: pl.DataFrame, period: int = 14) -> float:
+    """Calculate Ulcer Index — measures downside volatility via drawdown depth.
+
+    Args:
+        equity_df: DataFrame with 'equity' column.
+        period: Lookback period for rolling max (default 14).
+
+    Returns:
+        Ulcer Index value.
+    """
+    equity = equity_df["equity"]
+    if len(equity) < period:
+        return 0.0
+
+    running_max = equity.rolling_max(window_size=period)
+    pct_drawdown = ((equity - running_max) / running_max * 100).drop_nulls()
+
+    if len(pct_drawdown) == 0:
+        return 0.0
+
+    squared_mean = (pct_drawdown * pct_drawdown).mean()
+    if squared_mean is None:
+        return 0.0
+    return float(np.sqrt(float(squared_mean)))  # type: ignore[arg-type]
+
+
+def tail_ratio(equity_df: pl.DataFrame, confidence: float = 0.95) -> float:
+    """Calculate Tail Ratio — ratio of right tail to left tail.
+
+    A ratio > 1 indicates the strategy has fatter right tails (larger gains than losses).
+
+    Args:
+        equity_df: DataFrame with 'equity' column.
+        confidence: Confidence level for quantile calculation (default 0.95).
+
+    Returns:
+        Tail ratio.
+    """
+    returns = equity_df["equity"].pct_change().drop_nulls()
+
+    if len(returns) == 0:
+        return 0.0
+
+    right_tail = returns.quantile(confidence)
+    left_tail = returns.quantile(1 - confidence)
+
+    if left_tail is None or right_tail is None:
+        return 0.0
+
+    left_val = abs(float(left_tail))  # type: ignore[arg-type]
+    if left_val == 0:
+        return float("inf") if float(right_tail) > 0 else 0.0  # type: ignore[arg-type]
+    return float(right_tail) / left_val  # type: ignore[arg-type]
+
+
+def information_ratio(equity_df: pl.DataFrame, benchmark_df: pl.DataFrame) -> float:
+    """Calculate Information Ratio — excess return per unit of tracking error.
+
+    Args:
+        equity_df: DataFrame with 'equity' column.
+        benchmark_df: DataFrame with 'equity' column for benchmark.
+
+    Returns:
+        Annualized Information Ratio.
+    """
+    returns = equity_df["equity"].pct_change().drop_nulls()
+    bench_returns = benchmark_df["equity"].pct_change().drop_nulls()
+
+    min_len = min(len(returns), len(bench_returns))
+    if min_len == 0:
+        return 0.0
+
+    returns = returns.head(min_len)
+    bench_returns = bench_returns.head(min_len)
+
+    active_returns = returns - bench_returns
+    mean_active = active_returns.mean()
+    std_active = active_returns.std()
+
+    if mean_active is None or std_active is None or float(std_active) == 0:  # type: ignore[arg-type]
+        return 0.0
+
+    return float(float(mean_active) / float(std_active) * np.sqrt(252))  # type: ignore[arg-type]
+
+
+def alpha_beta(equity_df: pl.DataFrame, benchmark_df: pl.DataFrame, risk_free_rate: float = 0.0) -> dict[str, float]:
+    """Calculate Alpha and Beta vs a benchmark using CAPM regression.
+
+    Args:
+        equity_df: DataFrame with 'equity' column.
+        benchmark_df: DataFrame with 'equity' column for benchmark.
+        risk_free_rate: Annual risk-free rate (default 0.0).
+
+    Returns:
+        Dictionary with 'alpha' (annualized) and 'beta' keys.
+    """
+    returns = equity_df["equity"].pct_change().drop_nulls().to_numpy()
+    bench_returns = benchmark_df["equity"].pct_change().drop_nulls().to_numpy()
+
+    min_len = min(len(returns), len(bench_returns))
+    if min_len < 2:
+        return {"alpha": 0.0, "beta": 0.0}
+
+    returns = returns[:min_len]
+    bench_returns = bench_returns[:min_len]
+
+    daily_rf = risk_free_rate / 252
+    excess_returns = returns - daily_rf
+    excess_bench = bench_returns - daily_rf
+
+    # OLS: beta = cov(r, b) / var(b)
+    cov = np.cov(excess_returns, excess_bench, ddof=1)
+    beta = float(cov[0, 1] / cov[1, 1]) if cov[1, 1] != 0 else 0.0
+    daily_alpha = float(np.mean(excess_returns) - beta * np.mean(excess_bench))
+    annualized_alpha = daily_alpha * 252
+
+    return {"alpha": annualized_alpha, "beta": beta}
+
+
+def drawdown_duration_stats(equity_df: pl.DataFrame) -> dict[str, float]:
+    """Calculate drawdown duration statistics.
+
+    Args:
+        equity_df: DataFrame with 'equity' column.
+
+    Returns:
+        Dictionary with max_drawdown_duration, avg_drawdown_duration, and drawdown_count.
+        Durations are in number of bars.
+    """
+    equity = equity_df["equity"].to_numpy()
+
+    if len(equity) < 2:
+        return {"max_drawdown_duration": 0.0, "avg_drawdown_duration": 0.0, "drawdown_count": 0}
+
+    running_max = np.maximum.accumulate(equity)
+    in_drawdown = equity < running_max
+
+    durations: list[int] = []
+    current_duration = 0
+
+    for is_dd in in_drawdown:
+        if is_dd:
+            current_duration += 1
+        elif current_duration > 0:
+            durations.append(current_duration)
+            current_duration = 0
+
+    if current_duration > 0:
+        durations.append(current_duration)
+
+    if not durations:
+        return {"max_drawdown_duration": 0.0, "avg_drawdown_duration": 0.0, "drawdown_count": 0}
+
+    return {
+        "max_drawdown_duration": float(max(durations)),
+        "avg_drawdown_duration": float(np.mean(durations)),
+        "drawdown_count": len(durations),
+    }
+
+
+def monthly_returns(equity_df: pl.DataFrame) -> pl.DataFrame:
+    """Calculate monthly returns table.
+
+    Args:
+        equity_df: DataFrame with 'timestamp' and 'equity' columns.
+            timestamp must be a Date or Datetime type.
+
+    Returns:
+        DataFrame with 'year', 'month', and 'return' columns.
+    """
+    if "timestamp" not in equity_df.columns or len(equity_df) == 0:
+        return pl.DataFrame(schema={"year": pl.Int32, "month": pl.Int32, "return": pl.Float64})
+
+    df = equity_df.select(["timestamp", "equity"])
+
+    # Extract year/month
+    ts_col = df["timestamp"]
+    if ts_col.dtype == pl.Date or ts_col.dtype == pl.Datetime or str(ts_col.dtype).startswith("Datetime"):
+        df = df.with_columns(
+            [
+                pl.col("timestamp").dt.year().alias("year"),
+                pl.col("timestamp").dt.month().alias("month"),
+            ]
+        )
+    else:
+        return pl.DataFrame(schema={"year": pl.Int32, "month": pl.Int32, "return": pl.Float64})
+
+    # Get first and last equity per month
+    monthly = (
+        df.group_by(["year", "month"])
+        .agg(
+            [
+                pl.col("equity").first().alias("start_equity"),
+                pl.col("equity").last().alias("end_equity"),
+            ]
+        )
+        .sort(["year", "month"])
+    )
+
+    monthly = monthly.with_columns(
+        [((pl.col("end_equity") - pl.col("start_equity")) / pl.col("start_equity")).alias("return")]
+    )
+
+    return monthly.select(["year", "month", "return"])
+
+
+def trade_level_metrics(trades: list[Any]) -> dict[str, float]:
+    """Calculate trade-level metrics from a list of Trade objects.
+
+    Args:
+        trades: List of Trade objects with pnl attribute.
+
+    Returns:
+        Dictionary with expectancy, sqn, kelly_criterion,
+        max_consecutive_wins, and max_consecutive_losses.
+    """
+    if not trades:
+        return {
+            "expectancy": 0.0,
+            "sqn": 0.0,
+            "kelly_criterion": 0.0,
+            "max_consecutive_wins": 0,
+            "max_consecutive_losses": 0,
+        }
+
+    pnls = [t.pnl for t in trades]
+    n = len(pnls)
+
+    # Expectancy = average P&L per trade
+    expectancy = float(np.mean(pnls))
+
+    # SQN = sqrt(n) * mean(pnl) / std(pnl)
+    std_pnl = float(np.std(pnls, ddof=1)) if n > 1 else 0.0
+    sqn = np.sqrt(n) * expectancy / std_pnl if std_pnl > 0 else 0.0
+
+    # Kelly criterion = W - (1-W)/R where W=win_rate, R=avg_win/avg_loss
+    winners = [p for p in pnls if p > 0]
+    losers = [p for p in pnls if p < 0]
+    win_rate = len(winners) / n if n > 0 else 0.0
+
+    if losers and winners:
+        avg_win = float(np.mean(winners))
+        avg_loss = abs(float(np.mean(losers)))
+        win_loss_ratio = avg_win / avg_loss if avg_loss > 0 else 0.0
+        kelly = win_rate - (1 - win_rate) / win_loss_ratio if win_loss_ratio > 0 else 0.0
+    else:
+        kelly = 1.0 if winners else 0.0
+
+    # Consecutive wins/losses
+    max_consec_wins = 0
+    max_consec_losses = 0
+    current_wins = 0
+    current_losses = 0
+
+    for pnl in pnls:
+        if pnl > 0:
+            current_wins += 1
+            current_losses = 0
+            max_consec_wins = max(max_consec_wins, current_wins)
+        elif pnl < 0:
+            current_losses += 1
+            current_wins = 0
+            max_consec_losses = max(max_consec_losses, current_losses)
+        else:
+            current_wins = 0
+            current_losses = 0
+
+    return {
+        "expectancy": expectancy,
+        "sqn": float(sqn),
+        "kelly_criterion": float(kelly),
+        "max_consecutive_wins": max_consec_wins,
+        "max_consecutive_losses": max_consec_losses,
+    }

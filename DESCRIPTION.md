@@ -192,6 +192,8 @@ All return Polars expressions for use in `preprocess()`:
 - total_return, cagr
 - sharpe_ratio, sortino_ratio, calmar_ratio
 - max_drawdown, volatility, volatility_annualized
+- ulcer_index, tail_ratio
+- max_drawdown_duration, avg_drawdown_duration, drawdown_count
 - win_rate, avg_win, avg_loss, profit_factor
 - initial_equity, final_equity
 
@@ -199,6 +201,11 @@ All return Polars expressions for use in `preprocess()`:
 - `sharpe_ratio()`, `sortino_ratio()`, `max_drawdown()`, `calmar_ratio()`
 - `omega_ratio()`, `value_at_risk()`, `conditional_value_at_risk()`
 - `rolling_sharpe()`, `underwater_plot_data()`
+- `ulcer_index()`, `tail_ratio()`
+- `information_ratio()`, `alpha_beta()` (require benchmark input)
+- `drawdown_duration_stats()` — max, avg duration and count
+- `monthly_returns()` — monthly returns table (requires timestamp column)
+- `trade_level_metrics()` — expectancy, SQN, Kelly criterion, consecutive wins/losses
 
 ### Runner
 
@@ -254,7 +261,7 @@ results = backtest(MyStrategy, data, params={...})
 
 ## Test Coverage
 
-207 tests passing. Test files:
+245 tests passing. Test files:
 - test_core.py, test_indicators.py, test_orders.py, test_limit_orders.py
 - test_trades.py, test_runner.py, test_warmup.py
 - test_take_profit.py, test_trailing_stop.py, test_bracket_orders.py
@@ -262,3 +269,4 @@ results = backtest(MyStrategy, data, params={...})
 - test_stop_orders.py (STOP and STOP_LIMIT order execution)
 - test_short_selling.py (short selling, borrow costs, bracket pending fills)
 - test_plotting.py (plot_backtest, plot_returns_distribution, trade markers, HTML export)
+- test_enhanced_metrics.py (ulcer index, tail ratio, information ratio, alpha/beta, drawdown durations, monthly returns, trade-level metrics)

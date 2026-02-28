@@ -22,15 +22,16 @@ Remaining work organized by priority. Each item is a self-contained task.
 - [x] Support saving charts to HTML
 - [x] Add returns distribution histogram
 
-## 3. Enhanced Metrics
+## 3. Enhanced Metrics ✓ COMPLETE
 
-- [ ] Add Ulcer Index to `metrics.py`
-- [ ] Add Tail Ratio
-- [ ] Add Information Ratio (requires benchmark input)
-- [ ] Add Alpha/Beta vs benchmark
-- [ ] Add drawdown duration statistics (max, avg, count)
-- [ ] Add monthly returns table
-- [ ] Add trade-level metrics to `calculate_metrics()` output — expectancy, SQN, Kelly criterion, consecutive wins/losses
+- [x] Add Ulcer Index to `metrics.py`
+- [x] Add Tail Ratio
+- [x] Add Information Ratio (requires benchmark input)
+- [x] Add Alpha/Beta vs benchmark
+- [x] Add drawdown duration statistics (max, avg, count)
+- [x] Add monthly returns table
+- [x] Add trade-level metrics — expectancy, SQN, Kelly criterion, consecutive wins/losses
+- [x] Integrate ulcer_index, tail_ratio, drawdown duration stats into `calculate_metrics()` output
 
 ## 4. Position Sizing
 
@@ -134,8 +135,8 @@ Remaining work organized by priority. Each item is a self-contained task.
 
 1. **Core Gaps** — STOP/STOP_LIMIT execution, short selling ✓
 2. **Visualization** — essential for strategy development ✓
-3. **Documentation & Examples** — usability
-4. **Enhanced Metrics** — quick wins
+3. **Enhanced Metrics** — quick wins ✓
+4. **Documentation & Examples** — usability
 5. **Position Sizing** — important for realistic backtesting
 6. **Risk Limits** — important for realistic backtesting
 7. **Commission Models** — nice to have
