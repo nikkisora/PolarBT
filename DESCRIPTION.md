@@ -88,7 +88,7 @@ Manages cash, positions, orders, and risk management.
 **Order Methods:**
 - `order(asset, quantity, limit_price=None)` — place market or limit order
 - `order_target(asset, target_quantity)` — order to reach target position
-- `order_target_percent(asset, percent)` — target % of portfolio value
+- `order_target_percent(asset, percent)` — target % of portfolio value (fee-inclusive: 100% works even with commission/slippage)
 - `order_target_value(asset, value)` — target dollar value
 - `close_position(asset)` / `close_all_positions()`
 - `order_day(asset, quantity, limit_price=None, bars_valid=None)` — day order with auto-expiry
@@ -144,6 +144,11 @@ Manages cash, positions, orders, and risk management.
 - `get_margin_used()` / `get_margin_available()` / `get_margin_ratio()` — margin tracking
 - Cash can go negative when leverage > 1 (representing borrowed funds)
 - Default `leverage=1.0` is fully backward compatible
+
+**Share Quantity:**
+- `fractional_shares=True` (default) — allows fractional quantities (e.g., 0.5 BTC)
+- `fractional_shares=False` — truncates all order quantities to whole numbers (toward zero)
+- Applies to all order methods: `order()`, `order_target()`, `order_target_percent()`, `order_target_value()`
 
 **Day Order Auto-Expiry** (priority order):
 1. Timestamp-based: expires when date changes (if timestamps available)

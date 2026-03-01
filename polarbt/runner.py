@@ -56,6 +56,7 @@ def backtest(
     daily_loss_limit: float | None = None,
     leverage: float = 1.0,
     maintenance_margin: float | None = None,
+    fractional_shares: bool = True,
 ) -> dict[str, Any]:
     """
     Run a single backtest.
@@ -130,6 +131,7 @@ def backtest(
             daily_loss_limit=daily_loss_limit,
             leverage=leverage,
             maintenance_margin=maintenance_margin,
+            fractional_shares=fractional_shares,
         )
 
         results = engine.run()
@@ -170,6 +172,7 @@ def _run_backtest_worker(
         float | None,
         float,
         float | None,
+        bool,
     ],
 ) -> BacktestResult:
     """
@@ -179,7 +182,7 @@ def _run_backtest_worker(
         args: Tuple of (strategy_class, data, params, initial_cash, commission, slippage,
               price_columns, warmup, order_delay, borrow_rate, bars_per_day,
               max_position_size, max_total_exposure, max_drawdown_stop, daily_loss_limit,
-              leverage, maintenance_margin)
+              leverage, maintenance_margin, fractional_shares)
 
     Returns:
         BacktestResult object
@@ -202,6 +205,7 @@ def _run_backtest_worker(
         daily_loss_limit,
         leverage,
         maintenance_margin,
+        fractional_shares,
     ) = args
 
     try:
@@ -223,6 +227,7 @@ def _run_backtest_worker(
             daily_loss_limit=daily_loss_limit,
             leverage=leverage,
             maintenance_margin=maintenance_margin,
+            fractional_shares=fractional_shares,
         )
 
         return BacktestResult(
@@ -260,6 +265,7 @@ def backtest_batch(
     daily_loss_limit: float | None = None,
     leverage: float = 1.0,
     maintenance_margin: float | None = None,
+    fractional_shares: bool = True,
 ) -> pl.DataFrame:
     """
     Run multiple backtests in parallel.
@@ -328,6 +334,7 @@ def backtest_batch(
             daily_loss_limit,
             leverage,
             maintenance_margin,
+            fractional_shares,
         )
         for params in param_sets
     ]
@@ -387,6 +394,7 @@ def _collect_engine_kwargs(
     daily_loss_limit: float | None,
     leverage: float,
     maintenance_margin: float | None,
+    fractional_shares: bool = True,
 ) -> dict[str, Any]:
     """Collect common engine keyword arguments into a dictionary."""
     return {
@@ -404,6 +412,7 @@ def _collect_engine_kwargs(
         "daily_loss_limit": daily_loss_limit,
         "leverage": leverage,
         "maintenance_margin": maintenance_margin,
+        "fractional_shares": fractional_shares,
     }
 
 
@@ -453,6 +462,7 @@ def optimize(
     daily_loss_limit: float | None = None,
     leverage: float = 1.0,
     maintenance_margin: float | None = None,
+    fractional_shares: bool = True,
 ) -> dict[str, Any]:
     """Grid search optimization for strategy parameters.
 
@@ -528,6 +538,7 @@ def optimize(
             daily_loss_limit,
             leverage,
             maintenance_margin,
+            fractional_shares,
         ),
     )
 
@@ -562,6 +573,7 @@ def optimize_multi(
     daily_loss_limit: float | None = None,
     leverage: float = 1.0,
     maintenance_margin: float | None = None,
+    fractional_shares: bool = True,
 ) -> pl.DataFrame:
     """Multi-objective optimization returning the Pareto front.
 
@@ -641,6 +653,7 @@ def optimize_multi(
             daily_loss_limit,
             leverage,
             maintenance_margin,
+            fractional_shares,
         ),
     )
 
@@ -720,6 +733,7 @@ def optimize_bayesian(
     daily_loss_limit: float | None = None,
     leverage: float = 1.0,
     maintenance_margin: float | None = None,
+    fractional_shares: bool = True,
 ) -> dict[str, Any]:
     """Bayesian optimization for strategy parameters using scikit-optimize.
 
@@ -796,6 +810,7 @@ def optimize_bayesian(
         daily_loss_limit,
         leverage,
         maintenance_margin,
+        fractional_shares,
     )
 
     all_results: list[dict[str, Any]] = []
@@ -867,6 +882,7 @@ def walk_forward_analysis(
     daily_loss_limit: float | None = None,
     leverage: float = 1.0,
     maintenance_margin: float | None = None,
+    fractional_shares: bool = True,
 ) -> pl.DataFrame:
     """
     Perform walk-forward analysis.
@@ -957,6 +973,7 @@ def walk_forward_analysis(
             daily_loss_limit=daily_loss_limit,
             leverage=leverage,
             maintenance_margin=maintenance_margin,
+            fractional_shares=fractional_shares,
         )
 
         # Test on out-of-sample data
@@ -978,6 +995,7 @@ def walk_forward_analysis(
             daily_loss_limit=daily_loss_limit,
             leverage=leverage,
             maintenance_margin=maintenance_margin,
+            fractional_shares=fractional_shares,
         )
 
         results.append(

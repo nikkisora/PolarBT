@@ -8,6 +8,7 @@ This module provides the fundamental building blocks for backtesting:
 - BacktestContext: Data container passed to strategy.next()
 """
 
+import math
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass
@@ -252,6 +253,7 @@ class Portfolio:
         daily_loss_limit: float | None = None,
         leverage: float = 1.0,
         maintenance_margin: float | None = None,
+        fractional_shares: bool = True,
     ):
         """
         Initialize a new portfolio.
@@ -292,7 +294,11 @@ class Portfolio:
             maintenance_margin: Minimum margin ratio before margin call (e.g., 0.25 = 25%).
                                Margin ratio = equity / total_abs_position_value.
                                When margin ratio falls below this, all positions are auto-closed.
-                               None means no margin calls (default). Only relevant when leverage > 1.
+                                None means no margin calls (default). Only relevant when leverage > 1.
+            fractional_shares: Whether to allow fractional share quantities (default True).
+                              When False, order quantities are truncated to whole numbers
+                              (toward zero). Useful for stock markets that don't support
+                              fractional trading.
         """
         self.initial_cash = initial_cash
         self.cash = initial_cash
@@ -326,6 +332,7 @@ class Portfolio:
         self.leverage = leverage
         self.maintenance_margin = maintenance_margin
         self._margin_called: bool = False
+        self.fractional_shares = fractional_shares
 
         # Risk limit state
         self._peak_equity: float = initial_cash
@@ -950,10 +957,7 @@ class Portfolio:
         # Margin required = total position value / leverage
         margin_required = new_total_position_value / self.leverage
 
-        # Estimate equity after order: current equity minus commission cost
-        # (position value change is neutral to equity, only commission reduces it)
-        equity_after = self.get_value() - (total_cost - abs(quantity) * price) if quantity > 0 else self.get_value()
-        # Simpler: equity is reduced by commission only for the purpose of this check
+        # Equity is reduced by commission only (position value changes are neutral to equity)
         commission_cost = total_cost - abs(quantity) * price if quantity > 0 else 0.0
         equity_after = self.get_value() - abs(commission_cost)
 
@@ -1193,6 +1197,16 @@ class Portfolio:
                 commission=commission,
             )
 
+    def _round_quantity(self, quantity: float) -> float:
+        """Round order quantity based on fractional_shares setting.
+
+        When fractional_shares is False, truncates toward zero to whole numbers.
+        When fractional_shares is True, returns quantity unchanged.
+        """
+        if self.fractional_shares:
+            return quantity
+        return float(math.trunc(quantity))
+
     def _generate_order_id(self) -> str:
         """Generate a unique order ID."""
         order_id = f"order_{self._next_order_id}"
@@ -1222,6 +1236,7 @@ class Portfolio:
         Returns:
             order_id if order was placed, None if rejected
         """
+        quantity = self._round_quantity(quantity)
         if quantity == 0:
             return None
 
@@ -1303,17 +1318,65 @@ class Portfolio:
         target_quantity = target_value / price
         return self.order_target(asset, target_quantity, limit_price)
 
-    def order_target_percent(self, asset: str, target_percent: float, limit_price: float | None = None) -> str | None:
-        """
-        Order to reach a target percentage of portfolio value.
+    def _estimate_fee_adjusted_quantity(self, quantity_delta: float, price: float) -> float:
+        """Adjust a buy quantity downward to account for slippage and commission.
+
+        When buying, the execution engine charges slippage (higher price) and
+        commission on top of the gross cost. This method reduces the quantity
+        so that the total cost (including fees) equals the original gross value.
+
+        For sells and zero-fee scenarios the quantity is returned unchanged.
 
         Args:
-            asset: Asset name
-            target_percent: Desired position as fraction of portfolio (e.g., 0.5 = 50%)
-            limit_price: Optional limit price
+            quantity_delta: Signed order quantity (positive = buy).
+            price: Expected execution price (before slippage).
 
         Returns:
-            order_id if order was placed, None otherwise
+            Adjusted quantity delta.
+        """
+        if quantity_delta <= 0 or price <= 0:
+            return quantity_delta
+
+        # Effective price after slippage
+        effective_price = price * (1 + self.slippage)
+
+        # Estimate per-unit commission by probing the commission model.
+        # commission(q, p) is often proportional to q*p, but may have fixed
+        # components. We compute the rate as commission(1, effective_price) / effective_price.
+        probe_commission = self.commission_model.calculate(1.0, effective_price)
+        commission_rate = probe_commission / effective_price if effective_price > 0 else 0.0
+
+        # adjusted_qty * effective_price * (1 + commission_rate) = original_qty * price
+        # => adjusted_qty = original_qty * price / (effective_price * (1 + commission_rate))
+        cost_multiplier = effective_price * (1 + commission_rate)
+        if cost_multiplier <= 0:
+            return quantity_delta
+
+        adjusted = quantity_delta * price / cost_multiplier
+
+        # Tiny safety margin to avoid floating-point rounding making the order
+        # exceed available cash by a fraction of a cent. Only applied when
+        # there are actual costs to account for.
+        if cost_multiplier > price:
+            adjusted *= 1 - 1e-9
+
+        return adjusted
+
+    def order_target_percent(self, asset: str, target_percent: float, limit_price: float | None = None) -> str | None:
+        """Order to reach a target percentage of portfolio value.
+
+        The target percentage is inclusive of fees and slippage. For example,
+        ordering 100% will allocate all available equity to the position,
+        automatically reserving enough cash to cover commission and slippage
+        so the order is not rejected.
+
+        Args:
+            asset: Asset name.
+            target_percent: Desired position as fraction of portfolio (e.g., 0.5 = 50%).
+            limit_price: Optional limit price.
+
+        Returns:
+            order_id if order was placed, None otherwise.
         """
         price = limit_price if limit_price is not None else self._current_prices.get(asset)
         if price is None or price <= 0:
@@ -1323,20 +1386,19 @@ class Portfolio:
         current_position = self.get_position(asset)
         current_value = current_position * price
 
-        # Calculate target value
+        # Calculate target value and the quantity delta needed
         target_value = portfolio_value * target_percent
-
-        # Calculate the difference we need to trade
         value_delta = target_value - current_value
 
         if abs(value_delta) < 1e-6:  # Already at target
             return None
 
-        # Calculate target quantity from value delta.
-        # Slippage and commission are handled by the execution engine when the
-        # order fills, so we only need a simple division here.
-        target_quantity = target_value / price
+        quantity_delta = value_delta / price
 
+        # Adjust buy orders downward so total cost (including fees) fits
+        adjusted_delta = self._estimate_fee_adjusted_quantity(quantity_delta, price)
+
+        target_quantity = current_position + adjusted_delta
         return self.order_target(asset, target_quantity, limit_price)
 
     def close_position(self, asset: str, limit_price: float | None = None) -> str | None:
@@ -2061,6 +2123,7 @@ class Engine:
         daily_loss_limit: float | None = None,
         leverage: float = 1.0,
         maintenance_margin: float | None = None,
+        fractional_shares: bool = True,
     ):
         """
         Initialize the backtesting engine.
@@ -2085,6 +2148,7 @@ class Engine:
             daily_loss_limit: Maximum daily loss before halting trading for the day (e.g., 0.05 = 5%)
             leverage: Maximum leverage multiplier (e.g., 2.0 = 2x leverage). Default 1.0.
             maintenance_margin: Minimum margin ratio before margin call (e.g., 0.25 = 25%). Default None.
+            fractional_shares: Whether to allow fractional share quantities (default True).
         """
         self.strategy = strategy
         self.initial_cash = initial_cash
@@ -2098,6 +2162,7 @@ class Engine:
         self.daily_loss_limit = daily_loss_limit
         self.leverage = leverage
         self.maintenance_margin = maintenance_margin
+        self.fractional_shares = fractional_shares
 
         # Validate warmup parameter
         if isinstance(warmup, str):
@@ -2204,6 +2269,7 @@ class Engine:
             daily_loss_limit=self.daily_loss_limit,
             leverage=self.leverage,
             maintenance_margin=self.maintenance_margin,
+            fractional_shares=self.fractional_shares,
         )
 
         # Preprocess data using strategy
