@@ -334,7 +334,7 @@ Falls back gracefully: raises `ImportError` with install instructions when TA-Li
 
 **`backtest(strategy_class, data, params=None, ...)`** — run single backtest, returns metrics dict.
 
-**`backtest_batch(strategy_class, data, param_sets, n_jobs=None, ...)`** — parallel execution across CPU cores, returns DataFrame of results.
+**`backtest_batch(strategy_class, data, param_sets, n_jobs=None, ...)`** — parallel execution across CPU cores, returns DataFrame of results. When `n_jobs=1`, runs sequentially in the main process (no multiprocessing). When `n_jobs>1`, uses the `spawn` multiprocessing context to avoid fork-safety issues with Polars on Linux.
 
 **`optimize(strategy_class, data, param_grid, objective="sharpe_ratio", constraint=None, ...)`** — grid search with optional constraint function to filter invalid parameter combinations, returns best result dict.
 

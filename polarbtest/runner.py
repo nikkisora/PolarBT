@@ -334,16 +334,26 @@ def backtest_batch(
 
     results = []
 
-    # Run backtests in parallel
-    with ProcessPoolExecutor(max_workers=n_jobs) as executor:
-        futures = {executor.submit(_run_backtest_worker, args): i for i, args in enumerate(args_list)}
-
-        for completed, future in enumerate(as_completed(futures), 1):
-            result = future.result()
+    if n_jobs == 1:
+        # Sequential execution — avoids fork-safety issues with Polars on Linux
+        for i, args in enumerate(args_list, 1):
+            result = _run_backtest_worker(args)
             results.append(result)
 
-            if verbose and completed % max(1, len(param_sets) // 10) == 0:
-                print(f"  Progress: {completed}/{len(param_sets)} ({100 * completed // len(param_sets)}%)")
+            if verbose and i % max(1, len(param_sets) // 10) == 0:
+                print(f"  Progress: {i}/{len(param_sets)} ({100 * i // len(param_sets)}%)")
+    else:
+        # Use spawn context to avoid Polars fork deadlocks on Linux
+        ctx = mp.get_context("spawn")
+        with ProcessPoolExecutor(max_workers=n_jobs, mp_context=ctx) as executor:
+            futures = {executor.submit(_run_backtest_worker, args): i for i, args in enumerate(args_list)}
+
+            for completed, future in enumerate(as_completed(futures), 1):
+                result = future.result()
+                results.append(result)
+
+                if verbose and completed % max(1, len(param_sets) // 10) == 0:
+                    print(f"  Progress: {completed}/{len(param_sets)} ({100 * completed // len(param_sets)}%)")
 
     if verbose:
         print(f"Completed {len(results)} backtests")

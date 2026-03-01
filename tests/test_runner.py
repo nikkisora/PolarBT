@@ -147,3 +147,93 @@ class TestOptimize:
         # (unless all results are the same, which is possible with limited data)
         assert best_max is not None
         assert best_min is not None
+
+
+@pytest.fixture
+def datetime_data():
+    """Create sample data with real datetime timestamps (triggers fork issues with Polars)."""
+    from datetime import datetime, timedelta
+
+    base = datetime(2024, 1, 1)
+    n = 100
+    return pl.DataFrame(
+        {
+            "timestamp": [base + timedelta(hours=i) for i in range(n)],
+            "open": [100.0 + i * 0.4 for i in range(n)],
+            "high": [101.0 + i * 0.5 for i in range(n)],
+            "low": [99.0 + i * 0.3 for i in range(n)],
+            "close": [100.0 + i * 0.5 for i in range(n)],
+            "volume": [1000.0 + i * 10 for i in range(n)],
+        }
+    )
+
+
+class TestSequentialFallback:
+    """Test that n_jobs=1 runs sequentially without ProcessPoolExecutor."""
+
+    def test_njobs_1_skips_multiprocessing(self, sample_data):
+        """n_jobs=1 should call worker directly, not spawn processes."""
+        param_sets = [{"sma_period": 5}, {"sma_period": 10}]
+        results_df = backtest_batch(SampleStrategy, sample_data, param_sets, n_jobs=1, verbose=False)
+
+        assert len(results_df) == 2
+        assert "sharpe_ratio" in results_df.columns
+
+    def test_njobs_1_with_datetime_data(self, datetime_data):
+        """n_jobs=1 with datetime columns must not deadlock."""
+        param_sets = [{"sma_period": 5}, {"sma_period": 10}, {"sma_period": 20}]
+        results_df = backtest_batch(SampleStrategy, datetime_data, param_sets, n_jobs=1, verbose=False)
+
+        assert len(results_df) == 3
+        assert all(results_df["success"].to_list())
+
+    def test_njobs_1_results_match_single_backtest(self, sample_data):
+        """Sequential batch results should match individual backtest() calls."""
+        params = {"sma_period": 10}
+        single = backtest(SampleStrategy, sample_data, params=params)
+        batch_df = backtest_batch(SampleStrategy, sample_data, [params], n_jobs=1, verbose=False)
+
+        batch_row = batch_df.to_dicts()[0]
+        assert abs(single["sharpe_ratio"] - batch_row["sharpe_ratio"]) < 1e-10
+        assert abs(single["total_return"] - batch_row["total_return"]) < 1e-10
+
+    def test_optimize_njobs_1(self, sample_data):
+        """optimize() with n_jobs=1 should work without multiprocessing."""
+        best = optimize(
+            SampleStrategy,
+            sample_data,
+            param_grid={"sma_period": [5, 10, 20]},
+            n_jobs=1,
+            verbose=False,
+        )
+        assert best is not None
+        assert "sharpe_ratio" in best
+
+
+class TestSpawnContext:
+    """Test that parallel execution uses spawn context."""
+
+    def test_batch_parallel_with_datetime(self, datetime_data):
+        """Parallel batch with datetime data should work (spawn context)."""
+        param_sets = [{"sma_period": 5}, {"sma_period": 10}, {"sma_period": 20}]
+        results_df = backtest_batch(SampleStrategy, datetime_data, param_sets, n_jobs=2, verbose=False)
+
+        assert len(results_df) == 3
+        assert "sharpe_ratio" in results_df.columns
+
+    def test_batch_parallel_results_consistent(self, sample_data):
+        """Parallel and sequential results should be consistent."""
+        param_sets = [{"sma_period": 5}, {"sma_period": 10}, {"sma_period": 20}]
+
+        seq_df = backtest_batch(SampleStrategy, sample_data, param_sets, n_jobs=1, verbose=False)
+        par_df = backtest_batch(SampleStrategy, sample_data, param_sets, n_jobs=2, verbose=False)
+
+        # Sort both by sma_period for comparison
+        seq_df = seq_df.sort("sma_period")
+        par_df = par_df.sort("sma_period")
+
+        for col in ["sharpe_ratio", "total_return"]:
+            seq_vals = seq_df[col].to_list()
+            par_vals = par_df[col].to_list()
+            for s, p in zip(seq_vals, par_vals):
+                assert abs(s - p) < 1e-10, f"Mismatch in {col}: seq={s}, par={p}"
