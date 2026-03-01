@@ -9,7 +9,7 @@ Features:
 - Parallel execution for evolutionary optimization
 """
 
-from polarbtest import data, indicators, metrics
+from polarbtest import analysis, data, indicators, metrics
 from polarbtest.commissions import (
     CommissionModel,
     CustomCommission,
@@ -36,6 +36,14 @@ from polarbtest.sizers import (
     PercentSizer,
     Sizer,
     VolatilitySizer,
+)
+from polarbtest.analysis import (
+    LookAheadResult,
+    MonteCarloResult,
+    PermutationTestResult,
+    detect_look_ahead_bias,
+    monte_carlo,
+    permutation_test,
 )
 from polarbtest.trades import Trade, TradeTracker
 
@@ -77,5 +85,12 @@ __all__ = [
     "MakerTakerCommission",
     "TieredCommission",
     "CustomCommission",
+    "analysis",
     "data",
+    "monte_carlo",
+    "detect_look_ahead_bias",
+    "permutation_test",
+    "MonteCarloResult",
+    "LookAheadResult",
+    "PermutationTestResult",
 ]

@@ -37,6 +37,7 @@ polarbtest/
 ├── plotting/
 │   ├── __init__.py   # plot_backtest, plot_returns_distribution, plot_sensitivity, plot_param_heatmap
 │   └── charts.py     # Chart generation using Plotly
+├── analysis.py       # Monte Carlo simulation, look-ahead bias detection, permutation testing
 ├── data/
 │   ├── __init__.py   # Data utilities exports
 │   ├── validation.py # Data validation (columns, dtypes, timestamps, OHLC integrity)
@@ -418,6 +419,33 @@ df_4h = resample_ohlcv(df, interval="4h")
 df_daily = resample_ohlcv(df, interval="1d")
 ```
 
+### Advanced Analysis
+
+`polarbtest/analysis.py` provides statistical validation tools for strategy results.
+
+| Function | Description |
+|---|---|
+| `monte_carlo(trades, initial_capital, n_simulations, confidence_level, seed)` | Resample trade P&Ls with replacement to generate simulated equity curves and confidence intervals |
+| `detect_look_ahead_bias(strategy, data, sample_bars, tolerance)` | Detect future data leaks in preprocess() by comparing truncated vs full dataset results |
+| `permutation_test(strategy_class, data, metric, n_permutations, seed, ...)` | Shuffle market returns and re-run strategy to compute p-value under null hypothesis |
+
+```python
+from polarbtest import monte_carlo, detect_look_ahead_bias, permutation_test
+
+# Monte Carlo confidence intervals on trade results
+mc = monte_carlo(engine.portfolio.trade_tracker.trades, initial_capital=100_000)
+print(f"95% CI on final equity: {mc.confidence_intervals['final_equity']}")
+
+# Check for look-ahead bias
+bias = detect_look_ahead_bias(MyStrategy(), df)
+if bias.biased_columns:
+    print(f"WARNING: {bias.biased_columns}")
+
+# Permutation test for statistical significance
+perm = permutation_test(MyStrategy, df, metric="sharpe_ratio", n_permutations=100)
+print(f"p-value: {perm.p_value:.4f}")
+```
+
 ## Data Format
 
 **Single asset (minimum):**
@@ -444,7 +472,7 @@ results = backtest(MyStrategy, data, params={...})
 
 ## Test Coverage
 
-533 tests passing. Test files:
+548 tests passing (excluding optional TA-Lib tests). Test files:
 - test_core.py, test_indicators.py, test_orders.py, test_limit_orders.py
 - test_trades.py, test_runner.py, test_warmup.py
 - test_take_profit.py, test_trailing_stop.py, test_bracket_orders.py
@@ -463,3 +491,4 @@ results = backtest(MyStrategy, data, params={...})
 - test_talib_real.py (real TA-Lib validation: numeric accuracy vs direct calls, all indicator categories, parameter variations, edge cases)
 - test_data_utils.py (validation: columns, dtypes, timestamps, OHLC integrity, nulls, negatives; cleaning: fill_gaps, adjust_splits, drop_zero_volume, clip_outliers; resampling: resample_ohlcv)
 - test_optimization.py (constraint functions, multi-objective Pareto optimization, Bayesian optimization, parameter sensitivity plots, 2D parameter heatmaps)
+- test_advanced_analysis.py (Monte Carlo simulation, look-ahead bias detection, permutation testing)
