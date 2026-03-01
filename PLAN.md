@@ -106,13 +106,13 @@ Remaining work organized by priority. Each item is a self-contained task.
 - [x] Add data cleaning functions (fill gaps, handle splits)
 - [x] Implement OHLCV resampling (e.g., 1-min to 1-hour)
 
-## 10. Optimization Enhancements
+## 10. Optimization Enhancements ✓ COMPLETE
 
-- [ ] Add constraint functions to `optimize()` (e.g., reject params where fast >= slow)
-- [ ] Add multi-objective optimization support
-- [ ] Add Bayesian optimization (optional, requires scikit-optimize)
-- [ ] Create parameter sensitivity plots
-- [ ] Create 2D parameter heatmaps
+- [x] Add constraint functions to `optimize()` (e.g., reject params where fast >= slow)
+- [x] Add multi-objective optimization support
+- [x] Add Bayesian optimization (optional, requires scikit-optimize)
+- [x] Create parameter sensitivity plots
+- [x] Create 2D parameter heatmaps
 
 ## 11. Advanced Analysis
 

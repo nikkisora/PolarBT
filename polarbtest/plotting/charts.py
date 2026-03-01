@@ -856,3 +856,179 @@ def _add_trade_markers(
             arrowcolor=color,
             opacity=0.8,
         )
+
+
+def plot_sensitivity(
+    results_df: pl.DataFrame,
+    param: str,
+    metric: str = "sharpe_ratio",
+    title: str | None = None,
+    save_html: str | None = None,
+) -> go.Figure:
+    """Plot parameter sensitivity — metric value vs a single parameter.
+
+    Shows how a metric changes as one parameter varies, with all other
+    parameter combinations shown as individual points and a mean line.
+
+    Args:
+        results_df: DataFrame from ``backtest_batch`` or ``optimize`` containing
+            the parameter column and metric column.
+        param: Name of the parameter column to plot on x-axis.
+        metric: Name of the metric column to plot on y-axis.
+        title: Chart title (auto-generated if None).
+        save_html: Optional file path to save as HTML.
+
+    Returns:
+        Plotly Figure object.
+
+    Example:
+        >>> results = backtest_batch(MyStrategy, data, param_sets)
+        >>> fig = plot_sensitivity(results, "sma_period", "sharpe_ratio")
+        >>> fig.show()
+    """
+    go_mod, _ = _get_plotly_modules()
+
+    if param not in results_df.columns:
+        raise ValueError(f"Parameter '{param}' not found in results DataFrame")
+    if metric not in results_df.columns:
+        raise ValueError(f"Metric '{metric}' not found in results DataFrame")
+
+    # Sort by parameter value
+    df = results_df.sort(param)
+
+    x_vals = df[param].to_list()
+    y_vals = df[metric].to_list()
+
+    # Compute mean per unique parameter value
+    agg = df.group_by(param).agg(pl.col(metric).mean().alias("mean")).sort(param)
+    mean_x = agg[param].to_list()
+    mean_y = agg["mean"].to_list()
+
+    fig = go_mod.Figure()
+
+    # Individual points
+    fig.add_trace(
+        go_mod.Scatter(
+            x=x_vals,
+            y=y_vals,
+            mode="markers",
+            name="Individual runs",
+            marker={"color": GREEN, "size": 6, "opacity": 0.6},
+        )
+    )
+
+    # Mean line
+    fig.add_trace(
+        go_mod.Scatter(
+            x=mean_x,
+            y=mean_y,
+            mode="lines+markers",
+            name="Mean",
+            line={"color": RED, "width": 2},
+            marker={"size": 8},
+        )
+    )
+
+    fig.update_layout(
+        title=title or f"Sensitivity: {metric} vs {param}",
+        xaxis_title=param,
+        yaxis_title=metric,
+        template="plotly_white",
+        hovermode="closest",
+    )
+
+    if save_html:
+        fig.write_html(save_html)
+
+    return fig
+
+
+def plot_param_heatmap(
+    results_df: pl.DataFrame,
+    param_x: str,
+    param_y: str,
+    metric: str = "sharpe_ratio",
+    aggregation: str = "mean",
+    title: str | None = None,
+    colorscale: str = "RdYlGn",
+    save_html: str | None = None,
+) -> go.Figure:
+    """Plot 2D parameter heatmap showing metric values across two parameters.
+
+    Args:
+        results_df: DataFrame from ``backtest_batch`` containing both parameter
+            columns and the metric column.
+        param_x: Parameter for x-axis.
+        param_y: Parameter for y-axis.
+        metric: Metric to display as color (default "sharpe_ratio").
+        aggregation: How to aggregate when multiple rows share the same
+            (param_x, param_y) pair. One of "mean", "max", "min" (default "mean").
+        title: Chart title (auto-generated if None).
+        colorscale: Plotly colorscale name (default "RdYlGn").
+        save_html: Optional file path to save as HTML.
+
+    Returns:
+        Plotly Figure object.
+
+    Example:
+        >>> results = backtest_batch(MyStrategy, data, param_sets)
+        >>> fig = plot_param_heatmap(results, "fast", "slow", "sharpe_ratio")
+        >>> fig.show()
+    """
+    go_mod, _ = _get_plotly_modules()
+
+    for col_name, label in [(param_x, "param_x"), (param_y, "param_y"), (metric, "metric")]:
+        if col_name not in results_df.columns:
+            raise ValueError(f"{label} '{col_name}' not found in results DataFrame")
+
+    agg_expr = {
+        "mean": pl.col(metric).mean(),
+        "max": pl.col(metric).max(),
+        "min": pl.col(metric).min(),
+    }
+    if aggregation not in agg_expr:
+        raise ValueError(f"aggregation must be one of {list(agg_expr.keys())}")
+
+    # Aggregate
+    agg = results_df.group_by([param_x, param_y]).agg(agg_expr[aggregation].alias("value")).sort([param_x, param_y])
+
+    # Pivot to 2D grid
+    x_unique = sorted(set(agg[param_x].to_list()))
+    y_unique = sorted(set(agg[param_y].to_list()))
+
+    # Build value lookup
+    lookup: dict[tuple[Any, Any], float] = {}
+    for row in agg.iter_rows(named=True):
+        lookup[(row[param_x], row[param_y])] = row["value"]
+
+    z = []
+    for yv in y_unique:
+        row_vals = []
+        for xv in x_unique:
+            row_vals.append(lookup.get((xv, yv)))
+        z.append(row_vals)
+
+    fig = go_mod.Figure(
+        data=go_mod.Heatmap(
+            z=z,
+            x=[str(v) for v in x_unique],
+            y=[str(v) for v in y_unique],
+            colorscale=colorscale,
+            colorbar={"title": metric},
+            text=[[f"{v:.4f}" if v is not None else "" for v in row] for row in z],
+            texttemplate="%{text}",
+            hovertemplate=f"{param_x}: %{{x}}<br>{param_y}: %{{y}}<br>{metric}: %{{z:.4f}}<extra></extra>",
+        )
+    )
+
+    fig.update_layout(
+        title=title or f"{metric} by {param_x} × {param_y} ({aggregation})",
+        xaxis_title=param_x,
+        yaxis_title=param_y,
+        template="plotly_white",
+    )
+
+    if save_html:
+        fig.write_html(save_html)
+
+    return fig

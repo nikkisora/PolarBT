@@ -33,9 +33,9 @@ polarbtest/
 ├── metrics.py        # Performance metrics
 ├── commissions.py    # Commission models (CommissionModel, MakerTaker, Tiered, Custom)
 ├── sizers.py         # Position sizing strategies
-├── runner.py         # backtest(), backtest_batch(), optimize(), walk_forward_analysis()
+├── runner.py         # backtest(), backtest_batch(), optimize(), optimize_multi(), optimize_bayesian(), walk_forward_analysis()
 ├── plotting/
-│   ├── __init__.py   # plot_backtest, plot_returns_distribution
+│   ├── __init__.py   # plot_backtest, plot_returns_distribution, plot_sensitivity, plot_param_heatmap
 │   └── charts.py     # Chart generation using Plotly
 ├── data/
 │   ├── __init__.py   # Data utilities exports
@@ -335,7 +335,11 @@ Falls back gracefully: raises `ImportError` with install instructions when TA-Li
 
 **`backtest_batch(strategy_class, data, param_sets, n_jobs=None, ...)`** — parallel execution across CPU cores, returns DataFrame of results.
 
-**`optimize(strategy_class, data, param_grid, objective="sharpe_ratio", ...)`** — grid search, returns best result dict.
+**`optimize(strategy_class, data, param_grid, objective="sharpe_ratio", constraint=None, ...)`** — grid search with optional constraint function to filter invalid parameter combinations, returns best result dict.
+
+**`optimize_multi(strategy_class, data, param_grid, objectives, maximize=None, constraint=None, ...)`** — multi-objective optimization returning Pareto-optimal (non-dominated) parameter combinations across multiple metrics.
+
+**`optimize_bayesian(strategy_class, data, param_space, objective="sharpe_ratio", n_calls=50, ...)`** — Bayesian optimization using Gaussian Process surrogate model (requires scikit-optimize). Efficiently explores continuous parameter spaces with far fewer evaluations than grid search.
 
 **`walk_forward_analysis(strategy_class, data, param_grid, train_periods, test_periods, ...)`** — walk-forward optimization with train/test splits, returns DataFrame of fold results.
 
@@ -354,6 +358,10 @@ Requires `plotly` (optional dependency): `pip install polarbtest[plotting]`
 - Save to HTML via `save_html="backtest.html"`
 
 **`plot_returns_distribution(engine, ...)`** — Histogram of daily returns with mean line.
+
+**`plot_sensitivity(results_df, param, metric, ...)`** — Parameter sensitivity chart showing how a metric varies with a single parameter. Shows individual data points and mean line.
+
+**`plot_param_heatmap(results_df, param_x, param_y, metric, aggregation="mean", ...)`** — 2D heatmap showing metric values across two parameters with configurable aggregation (mean, max, min).
 
 All functions return `plotly.graph_objects.Figure` for further customization.
 
@@ -436,7 +444,7 @@ results = backtest(MyStrategy, data, params={...})
 
 ## Test Coverage
 
-550 tests passing. Test files:
+533 tests passing. Test files:
 - test_core.py, test_indicators.py, test_orders.py, test_limit_orders.py
 - test_trades.py, test_runner.py, test_warmup.py
 - test_take_profit.py, test_trailing_stop.py, test_bracket_orders.py
@@ -454,3 +462,4 @@ results = backtest(MyStrategy, data, params={...})
 - test_talib_integration.py (TA-Lib wrapper: talib_expr, talib_multi_expr, talib_series, TALibIndicators namespace, graceful fallback)
 - test_talib_real.py (real TA-Lib validation: numeric accuracy vs direct calls, all indicator categories, parameter variations, edge cases)
 - test_data_utils.py (validation: columns, dtypes, timestamps, OHLC integrity, nulls, negatives; cleaning: fill_gaps, adjust_splits, drop_zero_volume, clip_outliers; resampling: resample_ohlcv)
+- test_optimization.py (constraint functions, multi-objective Pareto optimization, Bayesian optimization, parameter sensitivity plots, 2D parameter heatmaps)

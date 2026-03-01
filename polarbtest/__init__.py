@@ -27,7 +27,7 @@ from polarbtest.core import (
     standardize_dataframe,
 )
 from polarbtest.orders import Order, OrderStatus, OrderType
-from polarbtest.runner import backtest, backtest_batch
+from polarbtest.runner import backtest, backtest_batch, optimize, optimize_bayesian, optimize_multi
 from polarbtest.sizers import (
     FixedRiskSizer,
     FixedSizer,
@@ -52,6 +52,9 @@ __all__ = [
     "BacktestContext",
     "backtest",
     "backtest_batch",
+    "optimize",
+    "optimize_multi",
+    "optimize_bayesian",
     "standardize_dataframe",
     "merge_asset_dataframes",
     "indicators",
