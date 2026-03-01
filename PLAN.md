@@ -120,15 +120,18 @@ Remaining work organized by priority. Each item is a self-contained task.
 - [x] Implement look-ahead bias detection (scan for future data leaks in preprocess)
 - [x] Implement permutation test by shuffling market data
 
-## 12. Documentation & Examples
+## 12. Documentation & Examples ✓ COMPLETE
 
-- [ ] Write getting started guide with end-to-end example
-- [ ] Add example: SMA crossover with stop-loss
-- [ ] Add example: RSI mean reversion with bracket orders
-- [ ] Add example: Multi-asset momentum rotation
-- [ ] Add example: ML-integrated strategy
-- [ ] Add example: Walk-forward analysis workflow
-- [ ] Write API reference (can be auto-generated from docstrings)
+- [x] Write getting started guide with end-to-end example
+- [x] Add example: SMA crossover with stop-loss
+- [x] Add example: RSI mean reversion with bracket orders
+- [x] Add example: Multi-asset momentum rotation
+- [x] Add example: ML-integrated strategy
+- [x] Add example: Walk-forward analysis workflow
+- [x] Verify that examples cover all available functionality, fill the gaps if needed
+- [x] Write API reference (can be auto-generated from docstrings)
+- [x] Write a short readme, add cover image from `assets/cover.png`
+- [x] Add MIT license
 
 ---
 

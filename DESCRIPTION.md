@@ -472,7 +472,7 @@ results = backtest(MyStrategy, data, params={...})
 
 ## Test Coverage
 
-548 tests passing (excluding optional TA-Lib tests). Test files:
+595 tests passing (excluding optional TA-Lib tests). Test files:
 - test_core.py, test_indicators.py, test_orders.py, test_limit_orders.py
 - test_trades.py, test_runner.py, test_warmup.py
 - test_take_profit.py, test_trailing_stop.py, test_bracket_orders.py
