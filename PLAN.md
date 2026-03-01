@@ -60,12 +60,12 @@ Remaining work organized by priority. Each item is a self-contained task.
 - [x] Implement `CustomCommission` — user-provided callable
 - [x] Update Portfolio to accept `CommissionModel` instances alongside current float/tuple
 
-## 7. Margin & Leverage
+## 7. Margin & Leverage ✓ COMPLETE
 
-- [ ] Add `leverage` parameter to Portfolio
-- [ ] Implement `get_buying_power()` with leverage
-- [ ] Add margin requirement tracking
-- [ ] Implement margin call handling (auto-close positions)
+- [x] Add `leverage` parameter to Portfolio
+- [x] Implement `get_buying_power()` with leverage
+- [x] Add margin requirement tracking (`get_margin_used()`, `get_margin_available()`, `get_margin_ratio()`)
+- [x] Implement margin call handling (auto-close positions when margin ratio < maintenance_margin)
 
 ## 8. Additional Indicators
 

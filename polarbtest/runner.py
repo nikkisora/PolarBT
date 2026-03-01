@@ -50,6 +50,8 @@ def backtest(
     max_total_exposure: float | None = None,
     max_drawdown_stop: float | None = None,
     daily_loss_limit: float | None = None,
+    leverage: float = 1.0,
+    maintenance_margin: float | None = None,
 ) -> dict[str, Any]:
     """
     Run a single backtest.
@@ -75,6 +77,8 @@ def backtest(
         max_total_exposure: Maximum total exposure as fraction of portfolio value (default None)
         max_drawdown_stop: Maximum drawdown before halting trading (default None)
         daily_loss_limit: Maximum daily loss before halting trading for the day (default None)
+        leverage: Maximum leverage multiplier (default 1.0)
+        maintenance_margin: Minimum margin ratio before margin call (default None)
 
     Returns:
         Dictionary containing backtest results and metrics
@@ -120,6 +124,8 @@ def backtest(
             max_total_exposure=max_total_exposure,
             max_drawdown_stop=max_drawdown_stop,
             daily_loss_limit=daily_loss_limit,
+            leverage=leverage,
+            maintenance_margin=maintenance_margin,
         )
 
         results = engine.run()
@@ -158,6 +164,8 @@ def _run_backtest_worker(
         float | None,
         float | None,
         float | None,
+        float,
+        float | None,
     ],
 ) -> BacktestResult:
     """
@@ -166,7 +174,8 @@ def _run_backtest_worker(
     Args:
         args: Tuple of (strategy_class, data, params, initial_cash, commission, slippage,
               price_columns, warmup, order_delay, borrow_rate, bars_per_day,
-              max_position_size, max_total_exposure, max_drawdown_stop, daily_loss_limit)
+              max_position_size, max_total_exposure, max_drawdown_stop, daily_loss_limit,
+              leverage, maintenance_margin)
 
     Returns:
         BacktestResult object
@@ -187,6 +196,8 @@ def _run_backtest_worker(
         max_total_exposure,
         max_drawdown_stop,
         daily_loss_limit,
+        leverage,
+        maintenance_margin,
     ) = args
 
     try:
@@ -206,6 +217,8 @@ def _run_backtest_worker(
             max_total_exposure=max_total_exposure,
             max_drawdown_stop=max_drawdown_stop,
             daily_loss_limit=daily_loss_limit,
+            leverage=leverage,
+            maintenance_margin=maintenance_margin,
         )
 
         return BacktestResult(
@@ -241,6 +254,8 @@ def backtest_batch(
     max_total_exposure: float | None = None,
     max_drawdown_stop: float | None = None,
     daily_loss_limit: float | None = None,
+    leverage: float = 1.0,
+    maintenance_margin: float | None = None,
 ) -> pl.DataFrame:
     """
     Run multiple backtests in parallel.
@@ -266,6 +281,8 @@ def backtest_batch(
         max_total_exposure: Maximum total exposure as fraction of portfolio value (default None)
         max_drawdown_stop: Maximum drawdown before halting trading (default None)
         daily_loss_limit: Maximum daily loss before halting for the day (default None)
+        leverage: Maximum leverage multiplier (default 1.0)
+        maintenance_margin: Minimum margin ratio before margin call (default None)
 
     Returns:
         Polars DataFrame with results for each parameter set
@@ -305,6 +322,8 @@ def backtest_batch(
             max_total_exposure,
             max_drawdown_stop,
             daily_loss_limit,
+            leverage,
+            maintenance_margin,
         )
         for params in param_sets
     ]
@@ -359,6 +378,8 @@ def optimize(
     max_total_exposure: float | None = None,
     max_drawdown_stop: float | None = None,
     daily_loss_limit: float | None = None,
+    leverage: float = 1.0,
+    maintenance_margin: float | None = None,
 ) -> dict[str, Any]:
     """
     Grid search optimization for strategy parameters.
@@ -383,6 +404,8 @@ def optimize(
         max_total_exposure: Maximum total exposure as fraction of portfolio value (default None)
         max_drawdown_stop: Maximum drawdown before halting trading (default None)
         daily_loss_limit: Maximum daily loss before halting for the day (default None)
+        leverage: Maximum leverage multiplier (default 1.0)
+        maintenance_margin: Minimum margin ratio before margin call (default None)
 
     Returns:
         Dictionary with best parameters and results
@@ -427,6 +450,8 @@ def optimize(
         max_total_exposure=max_total_exposure,
         max_drawdown_stop=max_drawdown_stop,
         daily_loss_limit=daily_loss_limit,
+        leverage=leverage,
+        maintenance_margin=maintenance_margin,
     )
 
     # Find best result
@@ -460,6 +485,8 @@ def walk_forward_analysis(
     max_total_exposure: float | None = None,
     max_drawdown_stop: float | None = None,
     daily_loss_limit: float | None = None,
+    leverage: float = 1.0,
+    maintenance_margin: float | None = None,
 ) -> pl.DataFrame:
     """
     Perform walk-forward analysis.
@@ -546,6 +573,8 @@ def walk_forward_analysis(
             max_total_exposure=max_total_exposure,
             max_drawdown_stop=max_drawdown_stop,
             daily_loss_limit=daily_loss_limit,
+            leverage=leverage,
+            maintenance_margin=maintenance_margin,
         )
 
         # Test on out-of-sample data
@@ -565,6 +594,8 @@ def walk_forward_analysis(
             max_total_exposure=max_total_exposure,
             max_drawdown_stop=max_drawdown_stop,
             daily_loss_limit=daily_loss_limit,
+            leverage=leverage,
+            maintenance_margin=maintenance_margin,
         )
 
         results.append(

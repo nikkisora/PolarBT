@@ -128,6 +128,14 @@ Manages cash, positions, orders, and risk management.
 - `daily_loss_limit=0.05` — halt risk-increasing orders when intraday loss exceeds 5%; resets each calendar day
 - Risk-reducing orders (SL, TP, trailing stop, close_position) always execute regardless of limits
 
+**Margin & Leverage:**
+- `leverage=2.0` — 2x leverage, buying power = equity × leverage
+- `maintenance_margin=0.25` — margin call at 25% margin ratio; all positions auto-closed
+- `get_buying_power()` — available buying power with leverage
+- `get_margin_used()` / `get_margin_available()` / `get_margin_ratio()` — margin tracking
+- Cash can go negative when leverage > 1 (representing borrowed funds)
+- Default `leverage=1.0` is fully backward compatible
+
 **Day Order Auto-Expiry** (priority order):
 1. Timestamp-based: expires when date changes (if timestamps available)
 2. Explicit `bars_valid` parameter
@@ -325,7 +333,7 @@ results = backtest(MyStrategy, data, params={...})
 
 ## Test Coverage
 
-345 tests passing. Test files:
+366 tests passing. Test files:
 - test_core.py, test_indicators.py, test_orders.py, test_limit_orders.py
 - test_trades.py, test_runner.py, test_warmup.py
 - test_take_profit.py, test_trailing_stop.py, test_bracket_orders.py
@@ -338,3 +346,4 @@ results = backtest(MyStrategy, data, params={...})
 - test_risk_limits.py (max_position_size, max_total_exposure, max_drawdown_stop, daily_loss_limit, Engine integration, trading_halted property)
 - test_commissions.py (CommissionModel, PercentCommission, FixedPlusPercentCommission, MakerTakerCommission, TieredCommission, CustomCommission, Engine integration, backward compatibility)
 - test_bugfixes.py (SL/TP/trailing stop fill prices, reversal commission, position increase tracking, order_target_percent slippage, monthly returns, warmup equity, daily_win_rate rename)
+- test_margin_leverage.py (leverage buying power, margin methods, leveraged orders, margin calls, Engine/runner integration)

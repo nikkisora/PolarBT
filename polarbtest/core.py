@@ -250,6 +250,8 @@ class Portfolio:
         max_total_exposure: float | None = None,
         max_drawdown_stop: float | None = None,
         daily_loss_limit: float | None = None,
+        leverage: float = 1.0,
+        maintenance_margin: float | None = None,
     ):
         """
         Initialize a new portfolio.
@@ -284,6 +286,13 @@ class Portfolio:
                              When intraday loss exceeds this percentage of start-of-day equity,
                              new risk-increasing orders are rejected until the next day.
                              None means no limit.
+            leverage: Maximum leverage multiplier (e.g., 2.0 = 2x leverage). Buying power
+                     equals equity × leverage. Default 1.0 (no leverage). Cash can go negative
+                     when leverage > 1, representing borrowed funds from the broker.
+            maintenance_margin: Minimum margin ratio before margin call (e.g., 0.25 = 25%).
+                               Margin ratio = equity / total_abs_position_value.
+                               When margin ratio falls below this, all positions are auto-closed.
+                               None means no margin calls (default). Only relevant when leverage > 1.
         """
         self.initial_cash = initial_cash
         self.cash = initial_cash
@@ -312,6 +321,11 @@ class Portfolio:
         self.max_total_exposure = max_total_exposure
         self.max_drawdown_stop = max_drawdown_stop
         self.daily_loss_limit = daily_loss_limit
+
+        # Margin & Leverage
+        self.leverage = leverage
+        self.maintenance_margin = maintenance_margin
+        self._margin_called: bool = False
 
         # Risk limit state
         self._peak_equity: float = initial_cash
@@ -377,6 +391,9 @@ class Portfolio:
 
         # Update risk limit state (drawdown halt, daily loss halt)
         self._update_risk_limits()
+
+        # Check for margin calls (auto-close positions if margin ratio too low)
+        self._check_margin_call()
 
         # Update MAE/MFE for open positions
         for asset in self.trade_tracker.open_positions:
@@ -444,6 +461,37 @@ class Portfolio:
                 daily_loss = (self._day_start_equity - current_equity) / self._day_start_equity
                 if daily_loss >= self.daily_loss_limit:
                     self._daily_halted = True
+
+    def _check_margin_call(self) -> None:
+        """Check if margin ratio has fallen below maintenance margin and close all positions.
+
+        A margin call occurs when equity / total_abs_position_value < maintenance_margin.
+        When triggered, all positions are immediately closed at current market prices.
+        """
+        if self.maintenance_margin is None or not self.positions:
+            return
+
+        margin_ratio = self.get_margin_ratio()
+        if margin_ratio is not None and margin_ratio < self.maintenance_margin:
+            self._margin_called = True
+            # Close all positions — iterate over a copy since close_position modifies dict
+            for asset in list(self.positions.keys()):
+                position = self.positions.get(asset, 0.0)
+                if position != 0:
+                    quantity = -position
+                    order_id = self._generate_order_id()
+                    order = Order(
+                        order_id=order_id,
+                        asset=asset,
+                        size=quantity,
+                        order_type=OrderType.MARKET,
+                        status=OrderStatus.PENDING,
+                        created_bar=self._current_bar,
+                        created_timestamp=self._current_timestamp,
+                        _risk_order=True,
+                    )
+                    self.orders[order_id] = order
+                    self._try_execute_order(order)
 
     def _is_order_risk_reducing(self, asset: str, quantity: float) -> bool:
         """Check if an order reduces risk (moves position toward zero).
@@ -575,6 +623,62 @@ class Portfolio:
         """
         positions_value = sum(qty * self._current_prices.get(asset, 0.0) for asset, qty in self.positions.items())
         return self.cash + positions_value
+
+    def get_buying_power(self) -> float:
+        """Calculate available buying power with leverage.
+
+        Buying power = equity × leverage − total absolute position value.
+        When leverage is 1.0, this equals available cash (no borrowed funds).
+
+        Returns:
+            Available buying power for opening new positions.
+        """
+        equity = self.get_value()
+        total_position_value = sum(
+            abs(qty) * self._current_prices.get(asset, 0.0) for asset, qty in self.positions.items()
+        )
+        return max(0.0, equity * self.leverage - total_position_value)
+
+    def get_margin_used(self) -> float:
+        """Get margin currently used by open positions.
+
+        Margin used = total absolute position value / leverage.
+        This represents how much of your equity is committed as collateral.
+
+        Returns:
+            Margin used in currency units.
+        """
+        total_position_value = sum(
+            abs(qty) * self._current_prices.get(asset, 0.0) for asset, qty in self.positions.items()
+        )
+        return total_position_value / self.leverage if self.leverage > 0 else 0.0
+
+    def get_margin_available(self) -> float:
+        """Get remaining margin available for new positions.
+
+        Margin available = equity − margin used.
+
+        Returns:
+            Available margin in currency units.
+        """
+        return max(0.0, self.get_value() - self.get_margin_used())
+
+    def get_margin_ratio(self) -> float | None:
+        """Get current margin ratio (equity / total position value).
+
+        A margin ratio of 1.0 means equity equals total position value (no leverage used).
+        A margin ratio of 0.5 means you are using 2x leverage.
+        A margin ratio below maintenance_margin triggers a margin call.
+
+        Returns:
+            Margin ratio as a float, or None if no positions are open.
+        """
+        total_position_value = sum(
+            abs(qty) * self._current_prices.get(asset, 0.0) for asset, qty in self.positions.items()
+        )
+        if total_position_value == 0:
+            return None
+        return self.get_value() / total_position_value
 
     def get_position(self, asset: str) -> float:
         """
@@ -814,6 +918,47 @@ class Portfolio:
         else:
             return low <= order.stop_price
 
+    def _can_afford_order(self, total_cost: float, asset: str, quantity: float, price: float) -> bool:
+        """Check if an order can be afforded, considering leverage.
+
+        Without leverage (leverage=1.0), this is a simple cash check.
+        With leverage, checks if the resulting position fits within margin constraints:
+        new total margin required must not exceed equity.
+
+        Args:
+            total_cost: Total cash cost of the order (including commission).
+            asset: Asset symbol.
+            quantity: Order quantity (signed).
+            price: Execution price.
+
+        Returns:
+            True if the order can be afforded.
+        """
+        if self.leverage <= 1.0:
+            return total_cost <= self.cash
+
+        # With leverage: check if buying power covers the new position value
+        new_position = self.positions.get(asset, 0.0) + quantity
+        new_position_value = abs(new_position) * price
+
+        # Calculate total position value after this order (excluding this asset's old value)
+        other_position_value = sum(
+            abs(qty) * self._current_prices.get(a, 0.0) for a, qty in self.positions.items() if a != asset
+        )
+        new_total_position_value = other_position_value + new_position_value
+
+        # Margin required = total position value / leverage
+        margin_required = new_total_position_value / self.leverage
+
+        # Estimate equity after order: current equity minus commission cost
+        # (position value change is neutral to equity, only commission reduces it)
+        equity_after = self.get_value() - (total_cost - abs(quantity) * price) if quantity > 0 else self.get_value()
+        # Simpler: equity is reduced by commission only for the purpose of this check
+        commission_cost = total_cost - abs(quantity) * price if quantity > 0 else 0.0
+        equity_after = self.get_value() - abs(commission_cost)
+
+        return equity_after >= margin_required
+
     def _try_execute_order(self, order: Order) -> bool:
         """
         Try to execute an order.
@@ -908,6 +1053,7 @@ class Portfolio:
         gross_cost = abs(order.size) * execution_price
         commission_cost = self.commission_model.calculate(abs(order.size), execution_price, is_reversal)
 
+        # Check if order can be afforded (margin-aware for leveraged accounts)
         if order.is_buy():
             if current_position < 0:
                 # Covering a short position (partially or fully + possible new long)
@@ -918,14 +1064,14 @@ class Portfolio:
                 new_long_cost = new_long_size * execution_price
                 total_cost = cover_cost + new_long_cost + commission_cost
 
-                if total_cost > self.cash:
+                if not self._can_afford_order(total_cost, order.asset, order.size, execution_price):
                     order.mark_rejected()
                     return False
                 self.cash -= total_cost
             else:
                 # Opening or increasing a long position
                 total_cost = gross_cost + commission_cost
-                if total_cost > self.cash:
+                if not self._can_afford_order(total_cost, order.asset, order.size, execution_price):
                     order.mark_rejected()
                     return False
                 self.cash -= total_cost
@@ -1913,6 +2059,8 @@ class Engine:
         max_total_exposure: float | None = None,
         max_drawdown_stop: float | None = None,
         daily_loss_limit: float | None = None,
+        leverage: float = 1.0,
+        maintenance_margin: float | None = None,
     ):
         """
         Initialize the backtesting engine.
@@ -1935,6 +2083,8 @@ class Engine:
             max_total_exposure: Maximum total exposure as fraction of portfolio value (e.g., 1.5 = 150%)
             max_drawdown_stop: Maximum drawdown before halting trading (e.g., 0.2 = 20%)
             daily_loss_limit: Maximum daily loss before halting trading for the day (e.g., 0.05 = 5%)
+            leverage: Maximum leverage multiplier (e.g., 2.0 = 2x leverage). Default 1.0.
+            maintenance_margin: Minimum margin ratio before margin call (e.g., 0.25 = 25%). Default None.
         """
         self.strategy = strategy
         self.initial_cash = initial_cash
@@ -1946,6 +2096,8 @@ class Engine:
         self.max_total_exposure = max_total_exposure
         self.max_drawdown_stop = max_drawdown_stop
         self.daily_loss_limit = daily_loss_limit
+        self.leverage = leverage
+        self.maintenance_margin = maintenance_margin
 
         # Validate warmup parameter
         if isinstance(warmup, str):
@@ -2050,6 +2202,8 @@ class Engine:
             max_total_exposure=self.max_total_exposure,
             max_drawdown_stop=self.max_drawdown_stop,
             daily_loss_limit=self.daily_loss_limit,
+            leverage=self.leverage,
+            maintenance_margin=self.maintenance_margin,
         )
 
         # Preprocess data using strategy
