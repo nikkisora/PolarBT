@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "polarbt"
 version = "0.1.0"
 description = "Lightweight backtesting library built on polars"
-readme = "DESCRIPTION.md"
+readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [
@@ -41,8 +41,8 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/polarbt/polarbt"
-Repository = "https://github.com/polarbt/polarbt"
+Homepage = "https://github.com/nikkisora/PolarBT"
+Repository = "https://github.com/nikkisora/PolarBT"
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -73,7 +73,6 @@ indent-style = "space"
 [tool.mypy]
 python_version = "3.10"
 strict = true
-packages = ["polarbt"]
 warn_return_any = true
 warn_unused_ignores = true
 disallow_untyped_defs = true
