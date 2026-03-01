@@ -37,6 +37,11 @@ polarbtest/
 ├── plotting/
 │   ├── __init__.py   # plot_backtest, plot_returns_distribution
 │   └── charts.py     # Chart generation using Plotly
+├── data/
+│   ├── __init__.py   # Data utilities exports
+│   ├── validation.py # Data validation (columns, dtypes, timestamps, OHLC integrity)
+│   ├── cleaning.py   # Data cleaning (fill gaps, adjust splits, clip outliers)
+│   └── resampling.py # OHLCV resampling (e.g., 1-min to 1-hour)
 └── integrations/
     ├── __init__.py   # Optional integrations
     └── talib.py      # TA-Lib wrapper (optional dependency)
@@ -352,6 +357,59 @@ Requires `plotly` (optional dependency): `pip install polarbtest[plotting]`
 
 All functions return `plotly.graph_objects.Figure` for further customization.
 
+### Data Utilities
+
+`polarbtest/data/` provides validation, cleaning, and resampling functions for OHLCV DataFrames.
+
+**Validation** (`polarbtest.data`):
+
+| Function | Description |
+|---|---|
+| `validate(df, ...)` | Run all validation checks at once |
+| `validate_columns(df, required, ohlcv)` | Check required columns exist |
+| `validate_dtypes(df)` | Check price/volume columns are numeric |
+| `validate_timestamps(df, column)` | Check timestamps are sorted, no duplicates |
+| `validate_ohlc_integrity(df)` | Check high >= low, high >= open/close, etc. |
+| `validate_no_nulls(df, columns)` | Check for null values |
+| `validate_no_negative_prices(df)` | Check price columns are non-negative |
+
+```python
+from polarbtest.data import validate
+
+result = validate(df, ohlcv=True)
+if not result.valid:
+    print(result.errors)
+```
+
+**Cleaning** (`polarbtest.data`):
+
+| Function | Description |
+|---|---|
+| `fill_gaps(df, interval, method)` | Fill timestamp gaps with forward/backward fill |
+| `adjust_splits(df, splits)` | Adjust prices/volume for stock splits retroactively |
+| `drop_zero_volume(df)` | Remove rows with zero or null volume |
+| `clip_outliers(df, columns, lower_quantile, upper_quantile)` | Clip extreme values to quantile bounds |
+
+```python
+from polarbtest.data import fill_gaps, adjust_splits
+
+df = fill_gaps(df, interval="1h", method="forward")
+df = adjust_splits(df, splits=[("2024-06-15", 2.0)])  # 2:1 split
+```
+
+**Resampling** (`polarbtest.data`):
+
+| Function | Description |
+|---|---|
+| `resample_ohlcv(df, interval)` | Resample OHLCV to larger timeframe (first open, max high, min low, last close, sum volume) |
+
+```python
+from polarbtest.data import resample_ohlcv
+
+df_4h = resample_ohlcv(df, interval="4h")
+df_daily = resample_ohlcv(df, interval="1d")
+```
+
 ## Data Format
 
 **Single asset (minimum):**
@@ -378,7 +436,7 @@ results = backtest(MyStrategy, data, params={...})
 
 ## Test Coverage
 
-504 tests passing. Test files:
+550 tests passing. Test files:
 - test_core.py, test_indicators.py, test_orders.py, test_limit_orders.py
 - test_trades.py, test_runner.py, test_warmup.py
 - test_take_profit.py, test_trailing_stop.py, test_bracket_orders.py
@@ -395,3 +453,4 @@ results = backtest(MyStrategy, data, params={...})
 - test_additional_indicators.py (WMA, HMA, VWAP, SuperTrend, ADX, Stochastic, Williams %R, CCI, MFI, ROC, Keltner Channels, Donchian Channels, OBV, A/D Line, Pivot Points)
 - test_talib_integration.py (TA-Lib wrapper: talib_expr, talib_multi_expr, talib_series, TALibIndicators namespace, graceful fallback)
 - test_talib_real.py (real TA-Lib validation: numeric accuracy vs direct calls, all indicator categories, parameter variations, edge cases)
+- test_data_utils.py (validation: columns, dtypes, timestamps, OHLC integrity, nulls, negatives; cleaning: fill_gaps, adjust_splits, drop_zero_volume, clip_outliers; resampling: resample_ohlcv)

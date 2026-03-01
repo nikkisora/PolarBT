@@ -9,7 +9,7 @@ Features:
 - Parallel execution for evolutionary optimization
 """
 
-from polarbtest import indicators, metrics
+from polarbtest import data, indicators, metrics
 from polarbtest.commissions import (
     CommissionModel,
     CustomCommission,
@@ -74,4 +74,5 @@ __all__ = [
     "MakerTakerCommission",
     "TieredCommission",
     "CustomCommission",
+    "data",
 ]

@@ -99,12 +99,12 @@ Remaining work organized by priority. Each item is a self-contained task.
 - [x] Add convenience functions that call TA-Lib and return Polars expressions/Series
 - [x] Fall back gracefully when TA-Lib is not installed
 
-## 9. Data Utilities
+## 9. Data Utilities ✓ COMPLETE
 
-- [ ] Create `polarbtest/data/` module
-- [ ] Add data validation functions (check required columns, dtypes, sorted timestamps)
-- [ ] Add data cleaning functions (fill gaps, handle splits)
-- [ ] Implement OHLCV resampling (e.g., 1-min to 1-hour)
+- [x] Create `polarbtest/data/` module
+- [x] Add data validation functions (check required columns, dtypes, sorted timestamps)
+- [x] Add data cleaning functions (fill gaps, handle splits)
+- [x] Implement OHLCV resampling (e.g., 1-min to 1-hour)
 
 ## 10. Optimization Enhancements
 
