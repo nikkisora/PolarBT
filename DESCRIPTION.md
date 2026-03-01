@@ -257,6 +257,21 @@ All return Polars expressions for use in `preprocess()`:
 | `log_returns(column, periods)` | Logarithmic returns |
 | `crossover(fast_col, slow_col)` | Bullish crossover detection |
 | `crossunder(fast_col, slow_col)` | Bearish crossover detection |
+| `wma(column, period)` | Weighted Moving Average |
+| `hma(column, period)` | Hull Moving Average |
+| `vwap(close, volume, high, low)` | Volume Weighted Average Price |
+| `supertrend(high, low, close, period, multiplier)` | SuperTrend (returns line + direction) |
+| `adx(high, low, close, period)` | Average Directional Index (returns ADX, +DI, -DI) |
+| `stochastic(high, low, close, k, d)` | Stochastic Oscillator (%K, %D) |
+| `williams_r(high, low, close, period)` | Williams %R |
+| `cci(high, low, close, period)` | Commodity Channel Index |
+| `mfi(high, low, close, volume, period)` | Money Flow Index |
+| `roc(column, period)` | Rate of Change |
+| `keltner_channels(high, low, close, ema, atr, mult)` | Keltner Channels (upper, middle, lower) |
+| `donchian_channels(high, low, period)` | Donchian Channels (upper, middle, lower) |
+| `obv(close, volume)` | On-Balance Volume |
+| `ad_line(high, low, close, volume)` | Accumulation/Distribution Line |
+| `pivot_points(high, low, close, method)` | Pivot Points (standard/fibonacci/woodie/camarilla) |
 
 ### Metrics
 
@@ -333,7 +348,7 @@ results = backtest(MyStrategy, data, params={...})
 
 ## Test Coverage
 
-366 tests passing. Test files:
+394 tests passing. Test files:
 - test_core.py, test_indicators.py, test_orders.py, test_limit_orders.py
 - test_trades.py, test_runner.py, test_warmup.py
 - test_take_profit.py, test_trailing_stop.py, test_bracket_orders.py
@@ -347,3 +362,4 @@ results = backtest(MyStrategy, data, params={...})
 - test_commissions.py (CommissionModel, PercentCommission, FixedPlusPercentCommission, MakerTakerCommission, TieredCommission, CustomCommission, Engine integration, backward compatibility)
 - test_bugfixes.py (SL/TP/trailing stop fill prices, reversal commission, position increase tracking, order_target_percent slippage, monthly returns, warmup equity, daily_win_rate rename)
 - test_margin_leverage.py (leverage buying power, margin methods, leveraged orders, margin calls, Engine/runner integration)
+- test_additional_indicators.py (WMA, HMA, VWAP, SuperTrend, ADX, Stochastic, Williams %R, CCI, MFI, ROC, Keltner Channels, Donchian Channels, OBV, A/D Line, Pivot Points)

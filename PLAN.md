@@ -67,32 +67,32 @@ Remaining work organized by priority. Each item is a self-contained task.
 - [x] Add margin requirement tracking (`get_margin_used()`, `get_margin_available()`, `get_margin_ratio()`)
 - [x] Implement margin call handling (auto-close positions when margin ratio < maintenance_margin)
 
-## 8. Additional Indicators
+## 8. Additional Indicators ✓ COMPLETE (except TA-Lib integration)
 
 ### Trend
-- [ ] WMA (Weighted Moving Average)
-- [ ] HMA (Hull Moving Average)
-- [ ] VWAP
-- [ ] SuperTrend
-- [ ] ADX (Average Directional Index)
+- [x] WMA (Weighted Moving Average)
+- [x] HMA (Hull Moving Average)
+- [x] VWAP
+- [x] SuperTrend
+- [x] ADX (Average Directional Index)
 
 ### Momentum
-- [ ] Stochastic Oscillator
-- [ ] Williams %R
-- [ ] CCI (Commodity Channel Index)
-- [ ] MFI (Money Flow Index)
-- [ ] ROC (Rate of Change)
+- [x] Stochastic Oscillator
+- [x] Williams %R
+- [x] CCI (Commodity Channel Index)
+- [x] MFI (Money Flow Index)
+- [x] ROC (Rate of Change)
 
 ### Volatility
-- [ ] Keltner Channels
-- [ ] Donchian Channels
+- [x] Keltner Channels
+- [x] Donchian Channels
 
 ### Volume
-- [ ] OBV (On-Balance Volume)
-- [ ] A/D Line (Accumulation/Distribution)
+- [x] OBV (On-Balance Volume)
+- [x] A/D Line (Accumulation/Distribution)
 
 ### Support/Resistance
-- [ ] Pivot Points (Standard, Fibonacci, Woodie, Camarilla)
+- [x] Pivot Points (Standard, Fibonacci, Woodie, Camarilla)
 
 ### TA-Lib Integration
 - [ ] Create optional TA-Lib wrapper in `polarbtest/integrations/talib.py` (optional dependency)
