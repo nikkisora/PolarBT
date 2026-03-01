@@ -7,6 +7,7 @@ Requires plotly as an optional dependency: pip install plotly
 from polarbtest.plotting.charts import (
     plot_backtest,
     plot_param_heatmap,
+    plot_permutation_test,
     plot_returns_distribution,
     plot_sensitivity,
 )
@@ -14,6 +15,7 @@ from polarbtest.plotting.charts import (
 __all__ = [
     "plot_backtest",
     "plot_param_heatmap",
+    "plot_permutation_test",
     "plot_returns_distribution",
     "plot_sensitivity",
 ]

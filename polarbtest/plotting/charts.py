@@ -1032,3 +1032,108 @@ def plot_param_heatmap(
         fig.write_html(save_html)
 
     return fig
+
+
+def plot_permutation_test(
+    result: Any,
+    bins: int = 30,
+    title: str | None = None,
+    height: int = 450,
+    save_html: str | None = None,
+) -> go.Figure:
+    """Plot the null distribution from a permutation test with the original metric.
+
+    Shows a histogram of the null distribution (shuffled backtest results)
+    with vertical lines marking the original metric value and the null mean,
+    and a shaded region for values exceeding the original.
+
+    Args:
+        result: PermutationTestResult from permutation_test().
+        bins: Number of histogram bins.
+        title: Chart title. Auto-generated if None.
+        height: Chart height in pixels.
+        save_html: If provided, save chart to this HTML file path.
+
+    Returns:
+        Plotly Figure object.
+
+    Raises:
+        ImportError: If plotly is not installed.
+    """
+    go_mod, _ = _get_plotly_modules()
+
+    null = result.null_distribution
+    original = result.original_metric
+
+    if title is None:
+        title = f"Permutation Test — p-value = {result.p_value:.4f} ({result.n_permutations} permutations)"
+
+    fig = go_mod.Figure()
+
+    # Null distribution histogram
+    fig.add_trace(
+        go_mod.Histogram(
+            x=null.tolist(),
+            nbinsx=bins,
+            name="Null Distribution",
+            marker_color="#90CAF9",
+            opacity=0.8,
+        )
+    )
+
+    # Shade region >= original metric
+    above = null[null >= original]
+    if len(above) > 0:
+        fig.add_trace(
+            go_mod.Histogram(
+                x=above.tolist(),
+                nbinsx=bins,
+                name=f"≥ Original ({len(above)}/{len(null)})",
+                marker_color=RED,
+                opacity=0.7,
+            )
+        )
+
+    # Original metric line
+    fig.add_vline(
+        x=original,
+        line_dash="solid",
+        line_color=RED,
+        line_width=2.5,
+        annotation_text=f"Original: {original:.3f}",
+        annotation_position="top right",
+        annotation_font_color=RED,
+    )
+
+    # Null mean line
+    fig.add_vline(
+        x=result.mean_null,
+        line_dash="dash",
+        line_color="#555",
+        line_width=1.5,
+        annotation_text=f"Null mean: {result.mean_null:.3f}",
+        annotation_position="top left",
+        annotation_font_color="#555",
+    )
+
+    # ±1 std shading
+    x0 = result.mean_null - result.std_null
+    x1 = result.mean_null + result.std_null
+    fig.add_vrect(x0=x0, x1=x1, fillcolor="#E0E0E0", opacity=0.3, line_width=0, annotation_text="±1σ")
+
+    fig.update_layout(
+        title=title,
+        xaxis_title="Metric Value",
+        yaxis_title="Frequency",
+        height=height,
+        template="plotly_white",
+        bargap=0.05,
+        barmode="overlay",
+        showlegend=True,
+        legend={"x": 0.02, "y": 0.98},
+    )
+
+    if save_html:
+        fig.write_html(save_html)
+
+    return fig

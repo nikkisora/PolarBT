@@ -359,8 +359,11 @@ def permutation_test(
 
     null_array = np.array(null_metrics)
 
-    # p-value: fraction of null results >= original (one-tailed, upper)
-    p_value = float(np.mean(null_array >= original_metric))
+    # p-value with standard correction: (count + 1) / (n + 1)
+    # This avoids reporting an exact zero p-value, which would imply
+    # impossible certainty given a finite number of permutations.
+    count_ge = int(np.sum(null_array >= original_metric))
+    p_value = (count_ge + 1) / (n_permutations + 1)
 
     return PermutationTestResult(
         original_metric=original_metric,

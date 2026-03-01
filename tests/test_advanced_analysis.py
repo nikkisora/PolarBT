@@ -282,7 +282,23 @@ class TestPermutationTest:
             seed=42,
             params={"fast": 10, "slow": 30},
         )
-        assert 0.0 <= result.p_value <= 1.0
+        assert 0.0 < result.p_value <= 1.0
+
+    def test_p_value_never_zero(self) -> None:
+        """The (count+1)/(n+1) correction ensures p-value is never exactly 0."""
+        data = _make_ohlcv_data(150)
+        result = permutation_test(
+            SimpleSMAStrategy,
+            data,
+            original_metric=1e10,  # impossibly high — no null result will exceed this
+            metric="sharpe_ratio",
+            n_permutations=10,
+            seed=42,
+            params={"fast": 10, "slow": 30},
+        )
+        # With correction: p = (0 + 1) / (10 + 1) = 1/11
+        assert result.p_value == pytest.approx(1 / 11)
+        assert result.p_value > 0.0
 
     def test_no_price_columns_raises(self) -> None:
         data = pl.DataFrame({"x": [1, 2, 3], "y": [4, 5, 6]})

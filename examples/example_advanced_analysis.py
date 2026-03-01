@@ -27,7 +27,7 @@ from polarbtest import (
 )
 from polarbtest import indicators as ind
 from polarbtest.core import BacktestContext
-from polarbtest.plotting import plot_backtest, plot_param_heatmap, plot_sensitivity
+from polarbtest.plotting import plot_backtest, plot_param_heatmap, plot_permutation_test, plot_sensitivity
 
 # Try TA-Lib; fall back to built-in indicators if not installed.
 try:
@@ -377,6 +377,13 @@ if __name__ == "__main__":
     else:
         print("  → Not statistically significant — performance may be due to chance")
 
+    fig_perm = plot_permutation_test(
+        perm,
+        title=f"Permutation Test — Sharpe Ratio (p = {perm.p_value:.4f})",
+        save_html="permutation_test.html",
+    )
+    print("  Saved: permutation_test.html")
+
     # -----------------------------------------------------------------------
     # Summary
     # -----------------------------------------------------------------------
@@ -392,4 +399,4 @@ if __name__ == "__main__":
     if len(trades) >= 2:
         print(f"  MC 95% CI:      ${ci_equity[0]:,.0f} — ${ci_equity[1]:,.0f}")
     print(f"  Bias Check:     {'CLEAN' if not bias_result.biased_columns else 'BIASED'}")
-    print("\n  Charts: heatmap_sharpe.html, sensitivity_rsi.html, backtest_best.html")
+    print("\n  Charts: heatmap_sharpe.html, sensitivity_rsi.html, backtest_best.html, permutation_test.html")
