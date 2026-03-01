@@ -28,10 +28,21 @@ A lightweight, high-performance backtesting library for trading strategy develop
 
 ```bash
 pip install polarbt
+```
 
-# Optional extras
+Or with optional extras:
+
+```bash
 pip install polarbt[plotting]   # Plotly charts
 pip install polarbt[talib]      # TA-Lib integration
+```
+
+Install from source:
+
+```bash
+git clone git@github.com:nikkisora/PolarBT.git
+cd PolarBT
+pip install -e .
 ```
 
 ## Quick Start
