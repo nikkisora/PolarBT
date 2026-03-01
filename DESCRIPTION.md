@@ -1,4 +1,4 @@
-# PolarBtest
+# PolarBT
 
 A lightweight, high-performance backtesting library for trading strategy development and optimization. Built on Polars for fast vectorized data processing with an event-driven execution loop for flexible strategy logic.
 
@@ -24,7 +24,7 @@ Metrics                     →  Calculate performance metrics from equity curve
 ## Module Structure
 
 ```
-polarbtest/
+polarbt/
 ├── __init__.py       # Public API exports
 ├── core.py           # Portfolio, Strategy, Engine, BacktestContext
 ├── orders.py         # Order, OrderType, OrderStatus
@@ -174,7 +174,7 @@ Automatic trade lifecycle tracking via `TradeTracker`:
 
 ### Position Sizing
 
-`polarbtest/sizers.py` provides `Sizer` base class and implementations for computing trade quantities:
+`polarbt/sizers.py` provides `Sizer` base class and implementations for computing trade quantities:
 
 | Sizer | Description |
 |---|---|
@@ -189,7 +189,7 @@ Automatic trade lifecycle tracking via `TradeTracker`:
 - `order_with_sizer(asset, sizer, direction, price=None, **kwargs)` — compute quantity via sizer, then place order
 
 ```python
-from polarbtest import FixedRiskSizer
+from polarbt import FixedRiskSizer
 
 sizer = FixedRiskSizer(risk_percent=0.02)
 ctx.portfolio.order_with_sizer("BTC", sizer, direction=1.0, stop_distance=500.0)
@@ -197,7 +197,7 @@ ctx.portfolio.order_with_sizer("BTC", sizer, direction=1.0, stop_distance=500.0)
 
 ### Commission Models
 
-`polarbtest/commissions.py` provides a `CommissionModel` base class and implementations for flexible fee calculation. All models are accepted by Portfolio, Engine, and runner functions via the `commission` parameter alongside legacy float/tuple formats.
+`polarbt/commissions.py` provides a `CommissionModel` base class and implementations for flexible fee calculation. All models are accepted by Portfolio, Engine, and runner functions via the `commission` parameter alongside legacy float/tuple formats.
 
 | Model | Description |
 |---|---|
@@ -208,7 +208,7 @@ ctx.portfolio.order_with_sizer("BTC", sizer, direction=1.0, stop_distance=500.0)
 | `CustomCommission(func)` | User-provided callable `(size, price, is_reversal) -> float` |
 
 ```python
-from polarbtest import TieredCommission, MakerTakerCommission
+from polarbt import TieredCommission, MakerTakerCommission
 
 # Volume-based tiers: lower rates at higher volume
 engine = Engine(
@@ -284,12 +284,12 @@ All return Polars expressions for use in `preprocess()`:
 
 ### TA-Lib Integration
 
-Optional TA-Lib wrapper: `pip install polarbtest[talib]`
+Optional TA-Lib wrapper: `pip install polarbt[talib]`
 
 Provides a `ta` namespace that wraps TA-Lib functions into Polars expressions:
 
 ```python
-from polarbtest.integrations.talib import ta
+from polarbt.integrations.talib import ta
 
 class MyStrategy(Strategy):
     def preprocess(self, df: pl.DataFrame) -> pl.DataFrame:
@@ -346,7 +346,7 @@ Falls back gracefully: raises `ImportError` with install instructions when TA-Li
 
 ### Visualization
 
-Requires `plotly` (optional dependency): `pip install polarbtest[plotting]`
+Requires `plotly` (optional dependency): `pip install polarbt[plotting]`
 
 **`plot_backtest(engine, ...)`** — Multi-panel chart with:
 - Price chart (candlestick if OHLC available, line otherwise)
@@ -368,9 +368,9 @@ All functions return `plotly.graph_objects.Figure` for further customization.
 
 ### Data Utilities
 
-`polarbtest/data/` provides validation, cleaning, and resampling functions for OHLCV DataFrames.
+`polarbt/data/` provides validation, cleaning, and resampling functions for OHLCV DataFrames.
 
-**Validation** (`polarbtest.data`):
+**Validation** (`polarbt.data`):
 
 | Function | Description |
 |---|---|
@@ -383,14 +383,14 @@ All functions return `plotly.graph_objects.Figure` for further customization.
 | `validate_no_negative_prices(df)` | Check price columns are non-negative |
 
 ```python
-from polarbtest.data import validate
+from polarbt.data import validate
 
 result = validate(df, ohlcv=True)
 if not result.valid:
     print(result.errors)
 ```
 
-**Cleaning** (`polarbtest.data`):
+**Cleaning** (`polarbt.data`):
 
 | Function | Description |
 |---|---|
@@ -400,20 +400,20 @@ if not result.valid:
 | `clip_outliers(df, columns, lower_quantile, upper_quantile)` | Clip extreme values to quantile bounds |
 
 ```python
-from polarbtest.data import fill_gaps, adjust_splits
+from polarbt.data import fill_gaps, adjust_splits
 
 df = fill_gaps(df, interval="1h", method="forward")
 df = adjust_splits(df, splits=[("2024-06-15", 2.0)])  # 2:1 split
 ```
 
-**Resampling** (`polarbtest.data`):
+**Resampling** (`polarbt.data`):
 
 | Function | Description |
 |---|---|
 | `resample_ohlcv(df, interval)` | Resample OHLCV to larger timeframe (first open, max high, min low, last close, sum volume) |
 
 ```python
-from polarbtest.data import resample_ohlcv
+from polarbt.data import resample_ohlcv
 
 df_4h = resample_ohlcv(df, interval="4h")
 df_daily = resample_ohlcv(df, interval="1d")
@@ -421,7 +421,7 @@ df_daily = resample_ohlcv(df, interval="1d")
 
 ### Advanced Analysis
 
-`polarbtest/analysis.py` provides statistical validation tools for strategy results.
+`polarbt/analysis.py` provides statistical validation tools for strategy results.
 
 | Function | Description |
 |---|---|
@@ -430,7 +430,7 @@ df_daily = resample_ohlcv(df, interval="1d")
 | `permutation_test(strategy_class, data, metric, n_permutations, seed, ...)` | Shuffle market returns and re-run strategy to compute p-value under null hypothesis |
 
 ```python
-from polarbtest import monte_carlo, detect_look_ahead_bias, permutation_test
+from polarbt import monte_carlo, detect_look_ahead_bias, permutation_test
 
 # Monte Carlo confidence intervals on trade results
 mc = monte_carlo(engine.portfolio.trade_tracker.trades, initial_capital=100_000)

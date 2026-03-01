@@ -5,7 +5,7 @@ from datetime import datetime
 import polars as pl
 import pytest
 
-from polarbtest.core import Engine, Portfolio, Strategy
+from polarbt.core import Engine, Portfolio, Strategy
 
 # ---------------------------------------------------------------------------
 # Helpers

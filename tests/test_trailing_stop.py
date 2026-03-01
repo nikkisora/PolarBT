@@ -1,6 +1,6 @@
 """Tests for trailing stop-loss functionality."""
 
-from polarbtest.core import Portfolio
+from polarbt.core import Portfolio
 
 
 class TestTrailingStop:

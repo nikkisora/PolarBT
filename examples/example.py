@@ -1,5 +1,5 @@
 """
-Simple example demonstrating PolarBtest usage.
+Simple example demonstrating PolarBT usage.
 """
 
 # Create sample data with clear trend
@@ -7,9 +7,9 @@ import math
 
 import polars as pl
 
-from polarbtest import Strategy, backtest
-from polarbtest import indicators as ind
-from polarbtest.core import BacktestContext
+from polarbt import Strategy, backtest
+from polarbt import indicators as ind
+from polarbt.core import BacktestContext
 
 data = pl.DataFrame(
     {
@@ -49,7 +49,7 @@ class SMACrossStrategy(Strategy):
 
 
 if __name__ == "__main__":
-    print("Running PolarBtest Example\n" + "=" * 50)
+    print("Running PolarBT Example\n" + "=" * 50)
 
     # Run single backtest
     results = backtest(

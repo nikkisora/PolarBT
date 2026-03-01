@@ -3,7 +3,7 @@
 import polars as pl
 import pytest
 
-from polarbtest import (
+from polarbt import (
     BacktestContext,
     CustomCommission,
     Engine,
@@ -13,8 +13,8 @@ from polarbtest import (
     Strategy,
     TieredCommission,
 )
-from polarbtest.commissions import make_commission_model
-from polarbtest.core import Portfolio
+from polarbt.commissions import make_commission_model
+from polarbt.core import Portfolio
 
 # --- Unit tests for CommissionModel implementations ---
 

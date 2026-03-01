@@ -13,9 +13,9 @@ from typing import cast
 import numpy as np
 import polars as pl
 
-from polarbtest import Strategy, backtest
-from polarbtest import indicators as ind
-from polarbtest.core import BacktestContext
+from polarbt import Strategy, backtest
+from polarbt import indicators as ind
+from polarbt.core import BacktestContext
 
 
 class SimpleRSIStrategy(Strategy):

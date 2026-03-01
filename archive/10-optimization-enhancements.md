@@ -23,10 +23,10 @@ Added five optimization enhancements to the backtesting engine.
 - 23 new tests in `test_optimization.py` covering constraints, Pareto front computation, multi-objective optimization, sensitivity plots, and heatmaps
 
 ## Files Changed
-- `polarbtest/runner.py`
-- `polarbtest/plotting/charts.py`
-- `polarbtest/plotting/__init__.py`
-- `polarbtest/__init__.py`
+- `polarbt/runner.py`
+- `polarbt/plotting/charts.py`
+- `polarbt/plotting/__init__.py`
+- `polarbt/__init__.py`
 - `tests/test_optimization.py` (new)
 - `DESCRIPTION.md`
 - `PLAN.md`

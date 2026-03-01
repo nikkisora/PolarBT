@@ -14,9 +14,9 @@ from datetime import datetime
 
 import polars as pl
 
-from polarbtest.core import Engine, Portfolio, Strategy
-from polarbtest.metrics import calculate_metrics, monthly_returns
-from polarbtest.trades import TradeTracker
+from polarbt.core import Engine, Portfolio, Strategy
+from polarbt.metrics import calculate_metrics, monthly_returns
+from polarbt.trades import TradeTracker
 
 # ---------------------------------------------------------------------------
 # Fix 2: SL/TP/trailing stop fill at trigger price + slippage

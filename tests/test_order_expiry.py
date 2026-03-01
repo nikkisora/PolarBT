@@ -1,7 +1,7 @@
 """Tests for order expiry functionality (GTC vs Day orders)."""
 
-from polarbtest.core import Portfolio
-from polarbtest.orders import OrderStatus
+from polarbt.core import Portfolio
+from polarbt.orders import OrderStatus
 
 
 class TestOrderExpiry:

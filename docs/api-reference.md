@@ -1,8 +1,8 @@
 # API Reference
 
-Auto-generated summary of PolarBtest's public API. For detailed docstrings, see the source code.
+Auto-generated summary of PolarBT's public API. For detailed docstrings, see the source code.
 
-## Core (`polarbtest.core`)
+## Core (`polarbt.core`)
 
 ### `Strategy`
 
@@ -98,7 +98,7 @@ Engine(
 |---|---|
 | `run() -> dict` | Run backtest, return results dict |
 
-## Orders (`polarbtest.orders`)
+## Orders (`polarbt.orders`)
 
 ### `OrderType` (enum)
 
@@ -112,7 +112,7 @@ Engine(
 
 Dataclass representing an order with fields: `order_id`, `asset`, `quantity`, `order_type`, `limit_price`, `stop_price`, `status`, `filled_price`, `filled_bar`, `tags`, etc.
 
-## Trades (`polarbtest.trades`)
+## Trades (`polarbt.trades`)
 
 ### `Trade`
 
@@ -122,7 +122,7 @@ Dataclass with fields: `trade_id`, `asset`, `direction`, `entry_price`, `exit_pr
 
 Automatic trade lifecycle tracking. Exports to DataFrame via `to_dataframe()`.
 
-## Indicators (`polarbtest.indicators`)
+## Indicators (`polarbt.indicators`)
 
 All return `pl.Expr` for use in `preprocess()`.
 
@@ -181,7 +181,7 @@ All return `pl.Expr` for use in `preprocess()`.
 |---|---|
 | `pivot_points` | `pivot_points(high, low, close, method) -> dict[str, Expr]` |
 
-## Metrics (`polarbtest.metrics`)
+## Metrics (`polarbt.metrics`)
 
 ### `calculate_metrics(equity_df, initial_capital) -> dict`
 
@@ -208,7 +208,7 @@ Returns: `total_return`, `cagr`, `sharpe_ratio`, `sortino_ratio`, `calmar_ratio`
 | `monthly_returns(equity, timestamps)` | Monthly returns table |
 | `trade_level_metrics(trades_df)` | Expectancy, SQN, Kelly, streaks |
 
-## Commission Models (`polarbtest.commissions`)
+## Commission Models (`polarbt.commissions`)
 
 | Class | Constructor |
 |---|---|
@@ -218,7 +218,7 @@ Returns: `total_return`, `cagr`, `sharpe_ratio`, `sortino_ratio`, `calmar_ratio`
 | `TieredCommission` | `TieredCommission(tiers, fixed)` |
 | `CustomCommission` | `CustomCommission(func)` |
 
-## Position Sizing (`polarbtest.sizers`)
+## Position Sizing (`polarbt.sizers`)
 
 | Class | Constructor |
 |---|---|
@@ -229,7 +229,7 @@ Returns: `total_return`, `cagr`, `sharpe_ratio`, `sortino_ratio`, `calmar_ratio`
 | `VolatilitySizer` | `VolatilitySizer(target_risk_percent)` |
 | `MaxPositionSizer` | `MaxPositionSizer(sizer, max_quantity, max_percent)` |
 
-## Runner (`polarbtest.runner`)
+## Runner (`polarbt.runner`)
 
 | Function | Description |
 |---|---|
@@ -240,9 +240,9 @@ Returns: `total_return`, `cagr`, `sharpe_ratio`, `sortino_ratio`, `calmar_ratio`
 | `optimize_bayesian(strategy_class, data, param_space, objective, n_calls, ...)` | Bayesian optimization (requires scikit-optimize) |
 | `walk_forward_analysis(strategy_class, data, param_grid, train_periods, test_periods, ...)` | Walk-forward optimization |
 
-## Visualization (`polarbtest.plotting`)
+## Visualization (`polarbt.plotting`)
 
-Requires `plotly`: `pip install polarbtest[plotting]`
+Requires `plotly`: `pip install polarbt[plotting]`
 
 | Function | Description |
 |---|---|
@@ -254,7 +254,7 @@ Requires `plotly`: `pip install polarbtest[plotting]`
 
 All return `plotly.graph_objects.Figure`. Use `save_html="file.html"` to export.
 
-## Data Utilities (`polarbtest.data`)
+## Data Utilities (`polarbt.data`)
 
 ### Validation
 
@@ -283,7 +283,7 @@ All return `plotly.graph_objects.Figure`. Use `save_html="file.html"` to export.
 |---|---|
 | `resample_ohlcv(df, interval)` | Resample OHLCV to larger timeframe |
 
-## Advanced Analysis (`polarbtest.analysis`)
+## Advanced Analysis (`polarbt.analysis`)
 
 | Function | Description |
 |---|---|
@@ -291,9 +291,9 @@ All return `plotly.graph_objects.Figure`. Use `save_html="file.html"` to export.
 | `detect_look_ahead_bias(strategy, data, sample_bars, tolerance)` | Detect future data leaks in preprocess() |
 | `permutation_test(strategy_class, data, metric, n_permutations, seed, ...)` | Statistical significance test |
 
-## TA-Lib Integration (`polarbtest.integrations.talib`)
+## TA-Lib Integration (`polarbt.integrations.talib`)
 
-Optional. Requires TA-Lib: `pip install polarbtest[talib]`
+Optional. Requires TA-Lib: `pip install polarbt[talib]`
 
 | Function | Description |
 |---|---|

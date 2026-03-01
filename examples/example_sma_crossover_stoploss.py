@@ -13,10 +13,10 @@ from datetime import datetime, timedelta
 import numpy as np
 import polars as pl
 
-from polarbtest import Engine, Strategy
-from polarbtest import indicators as ind
-from polarbtest.core import BacktestContext
-from polarbtest.sizers import PercentSizer
+from polarbt import Engine, Strategy
+from polarbt import indicators as ind
+from polarbt.core import BacktestContext
+from polarbt.sizers import PercentSizer
 
 # Generate data with clear trending regimes: bull → bear → bull
 N = 500

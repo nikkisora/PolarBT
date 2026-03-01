@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="assets/cover.png" alt="PolarBtest" width="600">
+  <img src="assets/cover.png" alt="PolarBT" width="600">
 </p>
 
-# PolarBtest
+# PolarBT
 
 A lightweight, high-performance backtesting library for trading strategy development and optimization. Built on [Polars](https://pola.rs/) for fast vectorized data processing with an event-driven execution loop for flexible strategy logic.
 
@@ -27,20 +27,20 @@ A lightweight, high-performance backtesting library for trading strategy develop
 ## Installation
 
 ```bash
-pip install polarbtest
+pip install polarbt
 
 # Optional extras
-pip install polarbtest[plotting]   # Plotly charts
-pip install polarbtest[talib]      # TA-Lib integration
+pip install polarbt[plotting]   # Plotly charts
+pip install polarbt[talib]      # TA-Lib integration
 ```
 
 ## Quick Start
 
 ```python
 import polars as pl
-from polarbtest import Strategy, backtest
-from polarbtest import indicators as ind
-from polarbtest.core import BacktestContext
+from polarbt import Strategy, backtest
+from polarbt import indicators as ind
+from polarbt.core import BacktestContext
 
 
 class SMACross(Strategy):

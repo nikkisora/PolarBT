@@ -2,7 +2,7 @@
 
 import polars as pl
 
-from polarbtest.core import Engine, Portfolio, Strategy
+from polarbt.core import Engine, Portfolio, Strategy
 
 # --- Helper Strategy ---
 
@@ -264,7 +264,7 @@ class TestEngineIntegration:
 class TestRunnerIntegration:
     def test_backtest_with_leverage(self):
         """backtest() passes leverage parameter."""
-        from polarbtest.runner import backtest
+        from polarbt.runner import backtest
 
         df = pl.DataFrame({"close": [100.0, 101.0, 102.0, 103.0, 104.0]})
         results = backtest(

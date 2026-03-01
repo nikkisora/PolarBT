@@ -3,8 +3,8 @@
 import polars as pl
 import pytest
 
-from polarbtest.core import Engine, Portfolio, Strategy
-from polarbtest.orders import OrderStatus
+from polarbt.core import Engine, Portfolio, Strategy
+from polarbt.orders import OrderStatus
 
 
 class TestShortSelling:

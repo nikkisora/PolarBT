@@ -2,7 +2,7 @@
 
 import polars as pl
 
-from polarbtest.trades import Trade, TradeTracker
+from polarbt.trades import Trade, TradeTracker
 
 
 class TestTrade:

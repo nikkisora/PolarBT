@@ -4,7 +4,7 @@ from datetime import date, timedelta
 
 import polars as pl
 
-from polarbtest.metrics import (
+from polarbt.metrics import (
     alpha_beta,
     calculate_metrics,
     drawdown_duration_stats,
@@ -14,7 +14,7 @@ from polarbtest.metrics import (
     trade_level_metrics,
     ulcer_index,
 )
-from polarbtest.trades import Trade
+from polarbt.trades import Trade
 
 
 def _make_equity_df(values: list[float], with_timestamps: bool = False) -> pl.DataFrame:

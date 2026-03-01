@@ -2,7 +2,7 @@
 
 import polars as pl
 
-from polarbtest.core import Portfolio
+from polarbt.core import Portfolio
 
 
 class TestMAEMFE:

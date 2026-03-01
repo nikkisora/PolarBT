@@ -1,6 +1,6 @@
 """Tests for bracket order functionality (OCO orders)."""
 
-from polarbtest.core import Portfolio
+from polarbt.core import Portfolio
 
 
 class TestBracketOrders:

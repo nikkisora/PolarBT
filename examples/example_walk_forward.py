@@ -13,10 +13,10 @@ from datetime import datetime, timedelta
 import numpy as np
 import polars as pl
 
-from polarbtest import Strategy, optimize
-from polarbtest import indicators as ind
-from polarbtest.core import BacktestContext
-from polarbtest.runner import walk_forward_analysis
+from polarbt import Strategy, optimize
+from polarbt import indicators as ind
+from polarbt.core import BacktestContext
+from polarbt.runner import walk_forward_analysis
 
 N = 600
 BASE_DATE = datetime(2022, 1, 1)

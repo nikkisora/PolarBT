@@ -1,7 +1,7 @@
 """Tests that exercise the real TA-Lib library (not mocked).
 
 Every test in this file calls TA-Lib directly to compute expected values, then
-verifies that the polarbtest integration wrapper produces identical results.
+verifies that the polarbt integration wrapper produces identical results.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ import polars as pl
 import pytest
 import talib
 
-from polarbtest.integrations.talib import ta, talib_available, talib_expr, talib_multi_expr, talib_series
+from polarbt.integrations.talib import ta, talib_available, talib_expr, talib_multi_expr, talib_series
 
 
 @pytest.fixture

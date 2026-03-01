@@ -4,8 +4,8 @@ import numpy as np
 import polars as pl
 import pytest
 
-from polarbtest import indicators as ind
-from polarbtest.analysis import (
+from polarbt import indicators as ind
+from polarbt.analysis import (
     LookAheadResult,
     MonteCarloResult,
     PermutationTestResult,
@@ -13,8 +13,8 @@ from polarbtest.analysis import (
     monte_carlo,
     permutation_test,
 )
-from polarbtest.core import BacktestContext, Strategy
-from polarbtest.trades import Trade
+from polarbt.core import BacktestContext, Strategy
+from polarbt.trades import Trade
 
 # ---------------------------------------------------------------------------
 # Helpers

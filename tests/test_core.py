@@ -3,8 +3,8 @@
 import polars as pl
 import pytest
 
-from polarbtest import indicators as ind
-from polarbtest.core import BacktestContext, Engine, Portfolio, Strategy
+from polarbt import indicators as ind
+from polarbt.core import BacktestContext, Engine, Portfolio, Strategy
 
 
 @pytest.fixture
@@ -109,7 +109,7 @@ class TestPortfolio:
         order = portfolio.get_order(order_id)
         assert order is not None
         # With order_delay=0, order is executed immediately and rejected
-        from polarbtest.orders import OrderStatus
+        from polarbt.orders import OrderStatus
 
         assert order.status == OrderStatus.REJECTED
         assert portfolio.get_position("BTC") == 0.0
@@ -124,7 +124,7 @@ class TestPortfolio:
         assert order_id is not None
         order = portfolio.get_order(order_id)
         assert order is not None
-        from polarbtest.orders import OrderStatus
+        from polarbt.orders import OrderStatus
 
         assert order.status == OrderStatus.FILLED
         assert portfolio.get_position("BTC") == -1.0

@@ -3,14 +3,14 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "polarbtest"
+name = "polarbt"
 version = "0.1.0"
 description = "Lightweight backtesting library built on polars"
 readme = "DESCRIPTION.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [
-    {name = "PolarBtest Contributors"}
+    {name = "PolarBT Contributors"}
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -41,12 +41,12 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/polarbtest/polarbtest"
-Repository = "https://github.com/polarbtest/polarbtest"
+Homepage = "https://github.com/polarbt/polarbt"
+Repository = "https://github.com/polarbt/polarbt"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["polarbtest*"]
+include = ["polarbt*"]
 exclude = ["tests*", "examples*"]
 
 [tool.ruff]
@@ -97,6 +97,8 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = "talib.*"
 ignore_missing_imports = true
+
+
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

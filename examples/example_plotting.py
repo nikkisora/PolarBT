@@ -13,10 +13,10 @@ from datetime import datetime, timedelta
 
 import polars as pl
 
-from polarbtest import Engine, Strategy
-from polarbtest import indicators as ind
-from polarbtest.core import BacktestContext
-from polarbtest.plotting import plot_backtest, plot_returns_distribution
+from polarbt import Engine, Strategy
+from polarbt import indicators as ind
+from polarbt.core import BacktestContext
+from polarbt.plotting import plot_backtest, plot_returns_distribution
 
 # Generate synthetic OHLCV data with real timestamps and oscillating prices.
 # Pattern: rise → fall → rise → fall to create clear long and short opportunities.

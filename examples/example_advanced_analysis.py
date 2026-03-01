@@ -16,7 +16,7 @@ from datetime import datetime, timedelta
 import numpy as np
 import polars as pl
 
-from polarbtest import (
+from polarbt import (
     Engine,
     Strategy,
     backtest_batch,
@@ -25,13 +25,13 @@ from polarbtest import (
     optimize,
     permutation_test,
 )
-from polarbtest import indicators as ind
-from polarbtest.core import BacktestContext
-from polarbtest.plotting import plot_backtest, plot_param_heatmap, plot_permutation_test, plot_sensitivity
+from polarbt import indicators as ind
+from polarbt.core import BacktestContext
+from polarbt.plotting import plot_backtest, plot_param_heatmap, plot_permutation_test, plot_sensitivity
 
 # Try TA-Lib; fall back to built-in indicators if not installed.
 try:
-    from polarbtest.integrations.talib import ta, talib_available
+    from polarbt.integrations.talib import ta, talib_available
 
     USE_TALIB = talib_available()
 except ImportError:

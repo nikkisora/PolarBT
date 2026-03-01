@@ -5,9 +5,9 @@ from typing import Any
 import polars as pl
 import pytest
 
-from polarbtest import backtest
-from polarbtest import indicators as ind
-from polarbtest.core import BacktestContext, Engine, Strategy
+from polarbt import backtest
+from polarbt import indicators as ind
+from polarbt.core import BacktestContext, Engine, Strategy
 
 
 @pytest.fixture

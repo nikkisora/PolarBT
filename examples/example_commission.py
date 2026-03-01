@@ -1,5 +1,5 @@
 """
-Example demonstrating different commission models in PolarBtest.
+Example demonstrating different commission models in PolarBT.
 
 This script shows how to use:
 1. Percentage-only commission (backward compatible)
@@ -9,9 +9,9 @@ This script shows how to use:
 
 import polars as pl
 
-from polarbtest import indicators as ind
-from polarbtest.core import BacktestContext, Strategy
-from polarbtest.runner import backtest
+from polarbt import indicators as ind
+from polarbt.core import BacktestContext, Strategy
+from polarbt.runner import backtest
 
 
 class SimpleStrategy(Strategy):

@@ -6,9 +6,9 @@ import multiprocessing as mp
 import polars as pl
 import pytest
 
-from polarbtest import indicators as ind
-from polarbtest.core import Strategy
-from polarbtest.runner import (
+from polarbt import indicators as ind
+from polarbt.core import Strategy
+from polarbt.runner import (
     _generate_param_sets,
     _pareto_front,
     optimize,
@@ -227,7 +227,7 @@ class TestBayesianOptimization:
 
     def test_bayesian_import_error(self, sample_data):
         """optimize_bayesian raises ImportError when scikit-optimize is not installed."""
-        from polarbtest.runner import optimize_bayesian
+        from polarbt.runner import optimize_bayesian
 
         # This test only validates the function exists and has correct signature
         # We can't test the actual optimization without scikit-optimize
@@ -239,7 +239,7 @@ class TestSensitivityPlot:
 
     def test_plot_sensitivity_basic(self):
         """plot_sensitivity creates a figure."""
-        from polarbtest.plotting.charts import plot_sensitivity
+        from polarbt.plotting.charts import plot_sensitivity
 
         df = pl.DataFrame(
             {
@@ -254,7 +254,7 @@ class TestSensitivityPlot:
 
     def test_plot_sensitivity_missing_param(self):
         """plot_sensitivity raises on missing parameter column."""
-        from polarbtest.plotting.charts import plot_sensitivity
+        from polarbt.plotting.charts import plot_sensitivity
 
         df = pl.DataFrame({"sma_period": [5], "sharpe_ratio": [0.5]})
         with pytest.raises(ValueError, match="not found"):
@@ -262,7 +262,7 @@ class TestSensitivityPlot:
 
     def test_plot_sensitivity_missing_metric(self):
         """plot_sensitivity raises on missing metric column."""
-        from polarbtest.plotting.charts import plot_sensitivity
+        from polarbt.plotting.charts import plot_sensitivity
 
         df = pl.DataFrame({"sma_period": [5], "sharpe_ratio": [0.5]})
         with pytest.raises(ValueError, match="not found"):
@@ -270,7 +270,7 @@ class TestSensitivityPlot:
 
     def test_plot_sensitivity_aggregation(self):
         """plot_sensitivity aggregates duplicate parameter values."""
-        from polarbtest.plotting.charts import plot_sensitivity
+        from polarbt.plotting.charts import plot_sensitivity
 
         df = pl.DataFrame(
             {
@@ -286,7 +286,7 @@ class TestSensitivityPlot:
 
     def test_plot_sensitivity_save_html(self, tmp_path):
         """plot_sensitivity can save to HTML."""
-        from polarbtest.plotting.charts import plot_sensitivity
+        from polarbt.plotting.charts import plot_sensitivity
 
         df = pl.DataFrame(
             {
@@ -308,7 +308,7 @@ class TestParamHeatmap:
 
     def test_heatmap_basic(self):
         """plot_param_heatmap creates a figure."""
-        from polarbtest.plotting.charts import plot_param_heatmap
+        from polarbt.plotting.charts import plot_param_heatmap
 
         df = pl.DataFrame(
             {
@@ -324,7 +324,7 @@ class TestParamHeatmap:
 
     def test_heatmap_missing_column(self):
         """plot_param_heatmap raises on missing columns."""
-        from polarbtest.plotting.charts import plot_param_heatmap
+        from polarbt.plotting.charts import plot_param_heatmap
 
         df = pl.DataFrame({"fast": [5], "slow": [20], "sharpe_ratio": [0.5]})
         with pytest.raises(ValueError, match="not found"):
@@ -332,7 +332,7 @@ class TestParamHeatmap:
 
     def test_heatmap_invalid_aggregation(self):
         """plot_param_heatmap raises on invalid aggregation."""
-        from polarbtest.plotting.charts import plot_param_heatmap
+        from polarbt.plotting.charts import plot_param_heatmap
 
         df = pl.DataFrame({"fast": [5], "slow": [20], "sharpe_ratio": [0.5]})
         with pytest.raises(ValueError, match="aggregation"):
@@ -340,7 +340,7 @@ class TestParamHeatmap:
 
     def test_heatmap_aggregation_mean(self):
         """plot_param_heatmap aggregates multiple runs correctly."""
-        from polarbtest.plotting.charts import plot_param_heatmap
+        from polarbt.plotting.charts import plot_param_heatmap
 
         df = pl.DataFrame(
             {
@@ -357,7 +357,7 @@ class TestParamHeatmap:
 
     def test_heatmap_save_html(self, tmp_path):
         """plot_param_heatmap can save to HTML."""
-        from polarbtest.plotting.charts import plot_param_heatmap
+        from polarbt.plotting.charts import plot_param_heatmap
 
         df = pl.DataFrame(
             {
@@ -376,7 +376,7 @@ class TestParamHeatmap:
 
     def test_heatmap_max_aggregation(self):
         """plot_param_heatmap with max aggregation."""
-        from polarbtest.plotting.charts import plot_param_heatmap
+        from polarbt.plotting.charts import plot_param_heatmap
 
         df = pl.DataFrame(
             {

@@ -1,4 +1,4 @@
-# PolarBtest — Development Plan
+# PolarBT — Development Plan
 
 Remaining work organized by priority. Each item is a self-contained task.
 
@@ -14,7 +14,7 @@ Remaining work organized by priority. Each item is a self-contained task.
 
 ## 2. Visualization ✓ COMPLETE
 
-- [x] Create `polarbtest/plotting/` module with plotly as optional dependency
+- [x] Create `polarbt/plotting/` module with plotly as optional dependency
 - [x] Implement `plot_backtest()` — price chart + equity curve + drawdown subplot
 - [x] Add trade entry/exit markers (arrows) on price chart
 - [x] Add indicator overlay helpers (lines, bands)
@@ -35,7 +35,7 @@ Remaining work organized by priority. Each item is a self-contained task.
 
 ## 4. Position Sizing ✓ COMPLETE
 
-- [x] Create `polarbtest/sizers.py` with `Sizer` base class
+- [x] Create `polarbt/sizers.py` with `Sizer` base class
 - [x] Implement `FixedSizer` — fixed unit count
 - [x] Implement `PercentSizer` — percentage of portfolio
 - [x] Implement `FixedRiskSizer` — risk X% per trade based on stop distance
@@ -95,13 +95,13 @@ Remaining work organized by priority. Each item is a self-contained task.
 - [x] Pivot Points (Standard, Fibonacci, Woodie, Camarilla)
 
 ### TA-Lib Integration
-- [x] Create optional TA-Lib wrapper in `polarbtest/integrations/talib.py` (optional dependency)
+- [x] Create optional TA-Lib wrapper in `polarbt/integrations/talib.py` (optional dependency)
 - [x] Add convenience functions that call TA-Lib and return Polars expressions/Series
 - [x] Fall back gracefully when TA-Lib is not installed
 
 ## 9. Data Utilities ✓ COMPLETE
 
-- [x] Create `polarbtest/data/` module
+- [x] Create `polarbt/data/` module
 - [x] Add data validation functions (check required columns, dtypes, sorted timestamps)
 - [x] Add data cleaning functions (fill gaps, handle splits)
 - [x] Implement OHLCV resampling (e.g., 1-min to 1-hour)

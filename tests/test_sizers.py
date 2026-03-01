@@ -3,8 +3,8 @@
 import polars as pl
 import pytest
 
-from polarbtest.core import Engine, Portfolio, Strategy
-from polarbtest.sizers import (
+from polarbt.core import Engine, Portfolio, Strategy
+from polarbt.sizers import (
     FixedRiskSizer,
     FixedSizer,
     KellySizer,

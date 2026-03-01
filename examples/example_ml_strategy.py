@@ -1,7 +1,7 @@
 """
 Example: ML-Integrated Strategy
 
-Demonstrates how to integrate a machine learning model with PolarBtest.
+Demonstrates how to integrate a machine learning model with PolarBT.
 Uses a simple linear regression as a stand-in for any sklearn/torch model.
 
 The pattern:
@@ -18,9 +18,9 @@ from datetime import datetime, timedelta
 import numpy as np
 import polars as pl
 
-from polarbtest import Engine, Strategy
-from polarbtest import indicators as ind
-from polarbtest.core import BacktestContext
+from polarbt import Engine, Strategy
+from polarbt import indicators as ind
+from polarbt.core import BacktestContext
 
 # Generate data with clear trending regimes
 N = 500

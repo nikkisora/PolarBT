@@ -4,7 +4,7 @@ import numpy as np
 import polars as pl
 import pytest
 
-from polarbtest import indicators as ind
+from polarbt import indicators as ind
 
 
 @pytest.fixture

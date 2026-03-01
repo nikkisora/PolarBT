@@ -1,6 +1,6 @@
 """Tests for take-profit order functionality."""
 
-from polarbtest.core import Portfolio
+from polarbt.core import Portfolio
 
 
 class TestTakeProfit:

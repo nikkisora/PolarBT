@@ -1,22 +1,22 @@
-# Getting Started with PolarBtest
+# Getting Started with PolarBT
 
-This guide walks you through installing PolarBtest, writing your first strategy, running a backtest, and interpreting the results.
+This guide walks you through installing PolarBT, writing your first strategy, running a backtest, and interpreting the results.
 
 ## Installation
 
 ```bash
-pip install polarbtest
+pip install polarbt
 
 # Optional: plotting support
-pip install polarbtest[plotting]
+pip install polarbt[plotting]
 
 # Optional: TA-Lib integration
-pip install polarbtest[talib]
+pip install polarbt[talib]
 ```
 
 ## Your First Strategy
 
-Every PolarBtest strategy has two methods:
+Every PolarBT strategy has two methods:
 
 1. **`preprocess(df)`** — called once before the backtest. Add indicator columns using vectorized Polars operations.
 2. **`next(ctx)`** — called on every bar after warmup. Place orders through `ctx.portfolio`.
@@ -24,9 +24,9 @@ Every PolarBtest strategy has two methods:
 ```python
 import polars as pl
 
-from polarbtest import Strategy, backtest
-from polarbtest import indicators as ind
-from polarbtest.core import BacktestContext
+from polarbt import Strategy, backtest
+from polarbt import indicators as ind
+from polarbt.core import BacktestContext
 
 
 class SMACross(Strategy):
@@ -51,7 +51,7 @@ class SMACross(Strategy):
 
 ### Prepare Data
 
-PolarBtest accepts Polars DataFrames. The minimum required column is `close`. For full OHLCV support, include `open`, `high`, `low`, `close`, and `volume`.
+PolarBT accepts Polars DataFrames. The minimum required column is `close`. For full OHLCV support, include `open`, `high`, `low`, `close`, and `volume`.
 
 ```python
 import numpy as np
@@ -120,7 +120,7 @@ class SMACrossWithRisk(Strategy):
 For more control (e.g., accessing the engine for plotting), use `Engine` directly:
 
 ```python
-from polarbtest import Engine
+from polarbt import Engine
 
 engine = Engine(
     strategy=SMACross(fast_period=10, slow_period=30),
@@ -139,7 +139,7 @@ print(trades_df)
 ## Visualization
 
 ```python
-from polarbtest.plotting import plot_backtest, plot_returns_distribution
+from polarbt.plotting import plot_backtest, plot_returns_distribution
 
 fig = plot_backtest(
     engine,
@@ -154,7 +154,7 @@ fig = plot_returns_distribution(engine, save_html="returns.html")
 ## Parameter Optimization
 
 ```python
-from polarbtest import optimize
+from polarbt import optimize
 
 best = optimize(
     SMACross,

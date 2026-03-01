@@ -1,11 +1,11 @@
-"""Tests for polarbtest.data — validation, cleaning, and resampling utilities."""
+"""Tests for polarbt.data — validation, cleaning, and resampling utilities."""
 
 from datetime import datetime, timedelta
 
 import polars as pl
 import pytest
 
-from polarbtest.data import (
+from polarbt.data import (
     adjust_splits,
     clip_outliers,
     drop_zero_volume,

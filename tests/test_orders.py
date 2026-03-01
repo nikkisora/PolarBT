@@ -1,6 +1,6 @@
 """Tests for order management system."""
 
-from polarbtest.orders import Order, OrderStatus, OrderType
+from polarbt.orders import Order, OrderStatus, OrderType
 
 
 class TestOrderType:

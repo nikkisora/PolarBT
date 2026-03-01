@@ -1,6 +1,6 @@
-# PolarBtest - Agent Guidelines
+# PolarBT - Agent Guidelines
 
-This repository contains PolarBtest, a hybrid backtesting engine combining vectorized preprocessing (Polars) with event-driven execution for trading strategies. Follow these guidelines when working with the codebase.
+This repository contains PolarBT, a hybrid backtesting engine combining vectorized preprocessing (Polars) with event-driven execution for trading strategies. Follow these guidelines when working with the codebase.
 
 ## Architecture Philosophy
 
@@ -65,7 +65,7 @@ After finishing implementing, testing and reviewing the feature, always:
 ## Module Structure
 
 ```
-polarbtest/
+polarbt/
 ├── core.py           # Portfolio, Strategy, Engine, BacktestContext
 ├── orders.py         # Order, OrderType, OrderStatus
 ├── trades.py         # Trade, TradeTracker

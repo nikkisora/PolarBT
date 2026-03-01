@@ -1,1 +1,1 @@
-"""Tests for polarbtest library."""
+"""Tests for polarbt library."""

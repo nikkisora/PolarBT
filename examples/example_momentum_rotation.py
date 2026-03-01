@@ -13,9 +13,9 @@ from datetime import datetime, timedelta
 import numpy as np
 import polars as pl
 
-from polarbtest import Engine, Strategy
-from polarbtest import indicators as ind
-from polarbtest.core import BacktestContext
+from polarbt import Engine, Strategy
+from polarbt import indicators as ind
+from polarbt.core import BacktestContext
 
 N = 300
 BASE_DATE = datetime(2022, 1, 1)

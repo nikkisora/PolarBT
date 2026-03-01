@@ -7,9 +7,9 @@ from datetime import date, datetime, timedelta
 import polars as pl
 import pytest
 
-from polarbtest import Engine, Strategy, indicators
-from polarbtest.plotting import plot_backtest, plot_returns_distribution
-from polarbtest.plotting.charts import _format_duration
+from polarbt import Engine, Strategy, indicators
+from polarbt.plotting import plot_backtest, plot_returns_distribution
+from polarbt.plotting.charts import _format_duration
 
 CLOSE_PRICES = [100, 102, 104, 101, 99, 97, 100, 103, 105, 102, 98, 96, 99, 103, 106, 104, 100, 97, 101, 105]
 

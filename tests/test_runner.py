@@ -3,9 +3,9 @@
 import polars as pl
 import pytest
 
-from polarbtest import indicators as ind
-from polarbtest.core import Strategy
-from polarbtest.runner import backtest, backtest_batch, optimize
+from polarbt import indicators as ind
+from polarbt.core import Strategy
+from polarbt.runner import backtest, backtest_batch, optimize
 
 
 @pytest.fixture
@@ -235,5 +235,5 @@ class TestSpawnContext:
         for col in ["sharpe_ratio", "total_return"]:
             seq_vals = seq_df[col].to_list()
             par_vals = par_df[col].to_list()
-            for s, p in zip(seq_vals, par_vals):
+            for s, p in zip(seq_vals, par_vals, strict=True):
                 assert abs(s - p) < 1e-10, f"Mismatch in {col}: seq={s}, par={p}"

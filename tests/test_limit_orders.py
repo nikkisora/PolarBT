@@ -1,7 +1,7 @@
 """Tests for limit order execution."""
 
-from polarbtest.core import Portfolio
-from polarbtest.orders import OrderStatus, OrderType
+from polarbt.core import Portfolio
+from polarbt.orders import OrderStatus, OrderType
 
 
 class TestLimitOrders:
