@@ -208,7 +208,7 @@ if __name__ == "__main__":
         initial_cash=100_000,
         commission=0.001,
         slippage=0.0005,
-        n_jobs=1,
+        n_jobs=8,
         verbose=True,
     )
 
