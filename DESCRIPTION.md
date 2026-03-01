@@ -378,7 +378,7 @@ results = backtest(MyStrategy, data, params={...})
 
 ## Test Coverage
 
-441 tests passing. Test files:
+504 tests passing. Test files:
 - test_core.py, test_indicators.py, test_orders.py, test_limit_orders.py
 - test_trades.py, test_runner.py, test_warmup.py
 - test_take_profit.py, test_trailing_stop.py, test_bracket_orders.py
@@ -394,3 +394,4 @@ results = backtest(MyStrategy, data, params={...})
 - test_margin_leverage.py (leverage buying power, margin methods, leveraged orders, margin calls, Engine/runner integration)
 - test_additional_indicators.py (WMA, HMA, VWAP, SuperTrend, ADX, Stochastic, Williams %R, CCI, MFI, ROC, Keltner Channels, Donchian Channels, OBV, A/D Line, Pivot Points)
 - test_talib_integration.py (TA-Lib wrapper: talib_expr, talib_multi_expr, talib_series, TALibIndicators namespace, graceful fallback)
+- test_talib_real.py (real TA-Lib validation: numeric accuracy vs direct calls, all indicator categories, parameter variations, edge cases)

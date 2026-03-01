@@ -98,8 +98,8 @@ def talib_expr(
         result = func(*arrays, *args, **kwargs)
         if isinstance(result, tuple):
             # Multi-output: return first output (users should call talib_multi_expr instead)
-            return pl.Series(result[0])
-        return pl.Series(result)
+            return pl.Series(np.asarray(result[0], dtype=np.float64))
+        return pl.Series(np.asarray(result, dtype=np.float64))
 
     return pl.struct(col_list).map_batches(_apply, return_dtype=pl.Float64)
 
@@ -146,7 +146,7 @@ def talib_multi_expr(
             df = struct_series.struct.unnest()
             arrays = [df[c].to_numpy().astype(np.float64) for c in col_list]
             result = func(*arrays, *args, **kwargs)
-            return pl.Series(result[idx])
+            return pl.Series(np.asarray(result[idx], dtype=np.float64))
 
         return _apply
 
@@ -193,8 +193,8 @@ def talib_series(
     arrays = [s.to_numpy().astype(np.float64) for s in series]
     result = func(*arrays, **kwargs)
     if isinstance(result, tuple):
-        return pl.Series(result[0])
-    return pl.Series(result)
+        return pl.Series(np.asarray(result[0], dtype=np.float64))
+    return pl.Series(np.asarray(result, dtype=np.float64))
 
 
 # ---------------------------------------------------------------------------
