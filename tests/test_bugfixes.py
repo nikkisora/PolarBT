@@ -7,7 +7,7 @@ Covers:
 - order_target_percent no longer double-applies slippage
 - monthly_returns uses previous month's end equity
 - Equity curve excludes warmup bars
-- daily_win_rate rename in calculate_metrics
+- daily_win_rate removed, win_rate is now trade-based top-level alias
 """
 
 from datetime import datetime
@@ -352,18 +352,17 @@ class TestEquityCurveWarmup:
 
 
 # ---------------------------------------------------------------------------
-# Fix 10: daily_win_rate rename
+# Fix 10: daily_win_rate removed, win_rate is now trade-based (top-level alias)
 # ---------------------------------------------------------------------------
 
 
-class TestDailyWinRateRename:
-    """Verify calculate_metrics uses daily_win_rate key, not win_rate."""
+class TestWinRateCleanup:
+    """Verify calculate_metrics no longer contains daily_win_rate/daily_avg_win/daily_avg_loss."""
 
-    def test_metrics_has_daily_win_rate(self):
+    def test_metrics_no_daily_win_rate(self):
         df = pl.DataFrame({"timestamp": list(range(10)), "equity": [100 + i for i in range(10)]})
         metrics = calculate_metrics(df, 100.0)
 
-        assert "daily_win_rate" in metrics
-        assert "win_rate" not in metrics
-        assert "daily_avg_win" in metrics
-        assert "daily_avg_loss" in metrics
+        assert "daily_win_rate" not in metrics
+        assert "daily_avg_win" not in metrics
+        assert "daily_avg_loss" not in metrics

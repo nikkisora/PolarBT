@@ -185,7 +185,7 @@ All return `pl.Expr` for use in `preprocess()`.
 
 ### `calculate_metrics(equity_df, initial_capital) -> dict`
 
-Returns: `total_return`, `cagr`, `sharpe_ratio`, `sortino_ratio`, `calmar_ratio`, `max_drawdown`, `volatility`, `volatility_annualized`, `ulcer_index`, `tail_ratio`, `max_drawdown_duration`, `avg_drawdown_duration`, `drawdown_count`, `daily_win_rate`, `daily_avg_win`, `daily_avg_loss`, `profit_factor`, `initial_equity`, `final_equity`.
+Returns: `total_return`, `cagr`, `sharpe_ratio`, `sortino_ratio`, `calmar_ratio`, `max_drawdown`, `volatility`, `volatility_annualized`, `ulcer_index`, `tail_ratio`, `max_drawdown_duration`, `avg_drawdown_duration`, `drawdown_count`, `profit_factor`, `initial_equity`, `final_equity`.
 
 ### Standalone Functions
 

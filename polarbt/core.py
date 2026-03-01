@@ -2398,5 +2398,6 @@ class Engine:
         # Add trade information
         metrics["trades"] = self.portfolio.get_trades()
         metrics["trade_stats"] = self.portfolio.get_trade_stats()
+        metrics["win_rate"] = metrics["trade_stats"]["win_rate"]
 
         return metrics

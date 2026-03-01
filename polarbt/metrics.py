@@ -76,23 +76,10 @@ def calculate_metrics(equity_df: pl.DataFrame, initial_capital: float) -> dict[s
     # Calmar ratio
     calmar_ratio = cagr / max_drawdown if max_drawdown > 0 else 0.0
 
-    # Win rate and other stats
-    num_positive = (returns > 0).sum()
-    num_negative = (returns < 0).sum()
-    total_trades = num_positive + num_negative
-
-    win_rate = num_positive / total_trades if total_trades > 0 else 0.0
-
-    # Average win/loss
+    # Profit factor (based on daily/bar returns)
     positive_returns = returns.filter(returns > 0)
     negative_returns = returns.filter(returns < 0)
 
-    avg_win_val = positive_returns.mean() if len(positive_returns) > 0 else 0.0
-    avg_loss_val = negative_returns.mean() if len(negative_returns) > 0 else 0.0
-    avg_win = float(avg_win_val) if avg_win_val is not None else 0.0  # type: ignore[arg-type]
-    avg_loss = float(abs(avg_loss_val)) if avg_loss_val is not None else 0.0  # type: ignore[arg-type]
-
-    # Profit factor
     total_wins_val = positive_returns.sum() if len(positive_returns) > 0 else 0.0
     total_losses_val = negative_returns.sum() if len(negative_returns) > 0 else 0.0
     total_wins = float(total_wins_val) if total_wins_val is not None else 0.0
@@ -127,11 +114,8 @@ def calculate_metrics(equity_df: pl.DataFrame, initial_capital: float) -> dict[s
         "max_drawdown_duration": dd_stats["max_drawdown_duration"],
         "avg_drawdown_duration": dd_stats["avg_drawdown_duration"],
         "drawdown_count": dd_stats["drawdown_count"],
-        # Daily return statistics
+        # Return statistics
         "num_periods": int(num_periods),
-        "daily_win_rate": float(win_rate),
-        "daily_avg_win": float(avg_win),
-        "daily_avg_loss": float(avg_loss),
         "profit_factor": float(profit_factor) if profit_factor != float("inf") else 999.0,
         # Equity curve stats
         "initial_equity": float(initial_capital),

@@ -322,7 +322,7 @@ Falls back gracefully: raises `ImportError` with install instructions when TA-Li
 - max_drawdown, volatility, volatility_annualized
 - ulcer_index, tail_ratio
 - max_drawdown_duration, avg_drawdown_duration, drawdown_count
-- daily_win_rate, daily_avg_win, daily_avg_loss, profit_factor
+- profit_factor
 - initial_equity, final_equity
 
 **Standalone functions:**
@@ -368,6 +368,8 @@ Requires `plotly` (optional dependency): `pip install polarbt[plotting]`
 **`plot_sensitivity(results_df, param, metric, ...)`** — Parameter sensitivity chart showing how a metric varies with a single parameter. Shows individual data points and mean line.
 
 **`plot_param_heatmap(results_df, param_x, param_y, metric, aggregation="mean", ...)`** — 2D heatmap showing metric values across two parameters with configurable aggregation (mean, max, min).
+
+**`plot_permutation_test(perm_result, ...)`** — Histogram of permuted metric values with observed value line.
 
 All functions return `plotly.graph_objects.Figure` for further customization.
 
@@ -477,7 +479,7 @@ results = backtest(MyStrategy, data, params={...})
 
 ## Test Coverage
 
-595 tests passing (excluding optional TA-Lib tests). Test files:
+616 tests passing (excluding optional TA-Lib tests). Test files:
 - test_core.py, test_indicators.py, test_orders.py, test_limit_orders.py
 - test_trades.py, test_runner.py, test_warmup.py
 - test_take_profit.py, test_trailing_stop.py, test_bracket_orders.py
@@ -489,7 +491,7 @@ results = backtest(MyStrategy, data, params={...})
 - test_sizers.py (FixedSizer, PercentSizer, FixedRiskSizer, KellySizer, VolatilitySizer, MaxPositionSizer, order_with_sizer integration)
 - test_risk_limits.py (max_position_size, max_total_exposure, max_drawdown_stop, daily_loss_limit, Engine integration, trading_halted property)
 - test_commissions.py (CommissionModel, PercentCommission, FixedPlusPercentCommission, MakerTakerCommission, TieredCommission, CustomCommission, Engine integration, backward compatibility)
-- test_bugfixes.py (SL/TP/trailing stop fill prices, reversal commission, position increase tracking, order_target_percent slippage, monthly returns, warmup equity, daily_win_rate rename)
+- test_bugfixes.py (SL/TP/trailing stop fill prices, reversal commission, position increase tracking, order_target_percent slippage, monthly returns, warmup equity, win_rate cleanup)
 - test_margin_leverage.py (leverage buying power, margin methods, leveraged orders, margin calls, Engine/runner integration)
 - test_additional_indicators.py (WMA, HMA, VWAP, SuperTrend, ADX, Stochastic, Williams %R, CCI, MFI, ROC, Keltner Channels, Donchian Channels, OBV, A/D Line, Pivot Points)
 - test_talib_integration.py (TA-Lib wrapper: talib_expr, talib_multi_expr, talib_series, TALibIndicators namespace, graceful fallback)

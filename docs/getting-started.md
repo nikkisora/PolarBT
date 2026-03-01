@@ -84,7 +84,7 @@ results = backtest(
 print(f"Total Return:  {results['total_return']:.2%}")
 print(f"Sharpe Ratio:  {results['sharpe_ratio']:.2f}")
 print(f"Max Drawdown:  {results['max_drawdown']:.2%}")
-print(f"Win Rate:      {results['win_rate']:.2%}")
+print(f"Win Rate:      {results['win_rate']:.1f}%")
 print(f"Final Equity:  ${results['final_equity']:,.2f}")
 ```
 

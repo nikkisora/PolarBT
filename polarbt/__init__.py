@@ -35,7 +35,7 @@ from polarbt.core import (
     standardize_dataframe,
 )
 from polarbt.orders import Order, OrderStatus, OrderType
-from polarbt.runner import backtest, backtest_batch, optimize, optimize_bayesian, optimize_multi
+from polarbt.runner import backtest, backtest_batch, optimize, optimize_bayesian, optimize_multi, walk_forward_analysis
 from polarbt.sizers import (
     FixedRiskSizer,
     FixedSizer,
@@ -63,6 +63,7 @@ __all__ = [
     "optimize",
     "optimize_multi",
     "optimize_bayesian",
+    "walk_forward_analysis",
     "standardize_dataframe",
     "merge_asset_dataframes",
     "indicators",
@@ -93,4 +94,5 @@ __all__ = [
     "MonteCarloResult",
     "LookAheadResult",
     "PermutationTestResult",
+    "plotting",
 ]
