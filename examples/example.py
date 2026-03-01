@@ -22,7 +22,7 @@ data = pl.DataFrame(
 # Define a simple moving average crossover strategy
 class SMACrossStrategy(Strategy):
     def preprocess(self, df: pl.DataFrame) -> pl.DataFrame:
-        """Calculate moving averages and crossover signals using vectorized Polars operations"""
+        """Calculate moving averages and crossover signals using vectorized Polars operations."""
         fast_period = self.params.get("fast_period", 10)
         slow_period = self.params.get("slow_period", 20)
 
@@ -39,10 +39,10 @@ class SMACrossStrategy(Strategy):
         )
 
     def next(self, ctx: BacktestContext) -> None:
-        """Execute strategy logic on each bar"""
+        """Execute strategy logic on each bar."""
         # Golden cross: go long
         if ctx.row.get("golden_cross"):
-            ctx.portfolio.order_target_percent("asset", 1.0)
+            ctx.portfolio.order_target_percent("asset", 0.95)
         # Death cross: close position
         elif ctx.row.get("death_cross"):
             ctx.portfolio.close_position("asset")
@@ -64,7 +64,7 @@ if __name__ == "__main__":
     print(f"  Sharpe Ratio:    {results['sharpe_ratio']:.2f}")
     print(f"  Max Drawdown:    {results['max_drawdown']:.2%}")
     print(f"  Final Equity:    ${results['final_equity']:,.2f}")
-    print(f"  Win Rate:        {results['win_rate']:.2%}")
+    print(f"  Trades:          {results['trade_stats']['total_trades']}")
 
     print("\n" + "=" * 50)
     print("Example completed successfully!")

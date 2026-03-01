@@ -35,7 +35,7 @@ class SimpleRSIStrategy(Strategy):
 
         # Enter long on oversold
         if rsi < 30 and position == 0:
-            ctx.portfolio.order_target_percent("asset", 1.0)
+            ctx.portfolio.order_target_percent("asset", 0.95)
 
         # Exit on overbought
         elif rsi > 70 and position > 0:

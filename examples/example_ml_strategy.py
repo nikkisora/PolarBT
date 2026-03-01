@@ -22,15 +22,20 @@ from polarbtest import Engine, Strategy
 from polarbtest import indicators as ind
 from polarbtest.core import BacktestContext
 
+# Generate data with clear trending regimes
 N = 500
 BASE_DATE = datetime(2022, 1, 1)
 rng = np.random.default_rng(42)
 
-log_returns = rng.normal(0.0003, 0.015, N)
+log_returns = rng.normal(0.001, 0.012, N)
+log_returns[0:200] += 0.001  # bull
+log_returns[200:300] -= 0.002  # bear
+log_returns[300:500] += 0.001  # recovery
+
 close = 100.0 * np.exp(np.cumsum(log_returns))
-high = close * (1 + rng.uniform(0.002, 0.02, N))
-low = close * (1 - rng.uniform(0.002, 0.02, N))
-opn = close * (1 + rng.normal(0, 0.005, N))
+high = close * (1 + rng.uniform(0.002, 0.015, N))
+low = close * (1 - rng.uniform(0.002, 0.015, N))
+opn = close * (1 + rng.normal(0, 0.003, N))
 volume = rng.uniform(1_000, 50_000, N)
 
 data = pl.DataFrame(
@@ -52,9 +57,7 @@ def simple_linear_predict(features: np.ndarray, target: np.ndarray) -> np.ndarra
     In a real workflow you would train on a rolling/expanding window
     to avoid look-ahead bias.
     """
-    # Add bias column
     X = np.column_stack([np.ones(len(features)), features])
-    # OLS: beta = (X'X)^-1 X'y
     beta = np.linalg.lstsq(X, target, rcond=None)[0]
     return X @ beta
 
@@ -75,7 +78,7 @@ class MLStrategy(Strategy):
         rsi_period: RSI lookback
         sma_period: SMA lookback for trend feature
         vol_period: Volatility lookback
-        threshold: Minimum predicted return to enter (e.g., 0.001 = 0.1%)
+        threshold: Minimum predicted return to enter (e.g., 0.0002 = 0.02%)
     """
 
     def __init__(
@@ -83,7 +86,7 @@ class MLStrategy(Strategy):
         rsi_period: int = 14,
         sma_period: int = 20,
         vol_period: int = 20,
-        threshold: float = 0.002,
+        threshold: float = 0.0002,
         **kwargs: object,
     ) -> None:
         super().__init__(
@@ -113,7 +116,6 @@ class MLStrategy(Strategy):
         # Extract numpy arrays for ML
         valid_mask = df.select(feature_cols + [target_col]).drop_nulls()
         if len(valid_mask) < 50:
-            # Not enough data to train — return df with null predictions
             return df.with_columns(pl.lit(None).cast(pl.Float64).alias("ml_prediction"))
 
         features = valid_mask.select(feature_cols).to_numpy()
@@ -123,11 +125,10 @@ class MLStrategy(Strategy):
         predictions = simple_linear_predict(features, target)
 
         # Step 4: map predictions back to the DataFrame
-        pred_series = pl.Series("ml_prediction", [None] * len(df), dtype=pl.Float64)
+        pred_values: list[float | None] = [None] * len(df)
         valid_indices = df.select(feature_cols + [target_col]).drop_nulls().with_row_index("__idx")
         idx_list = valid_indices["__idx"].to_list()
 
-        pred_values = pred_series.to_list()
         for i, idx in enumerate(idx_list):
             pred_values[idx] = float(predictions[i])
 
@@ -154,7 +155,7 @@ if __name__ == "__main__":
     print("=" * 60)
 
     engine = Engine(
-        strategy=MLStrategy(rsi_period=14, sma_period=20, vol_period=20, threshold=0.002),
+        strategy=MLStrategy(rsi_period=14, sma_period=20, vol_period=20, threshold=0.0002),
         data=data,
         initial_cash=100_000,
         commission=0.001,
@@ -167,8 +168,22 @@ if __name__ == "__main__":
     print(f"Max Drawdown:    {results['max_drawdown']:.2%}")
 
     trade_stats = results["trade_stats"]
-    print(f"Trades:          {trade_stats['total_trades']}")
+    print(
+        f"Trades:          {trade_stats['total_trades']}"
+        f" ({trade_stats['winning_trades']}W / {trade_stats['losing_trades']}L)"
+    )
     print(f"Win Rate:        {trade_stats['win_rate']:.1f}%")
+
+    trades_df = results["trades"]
+    if len(trades_df) > 0:
+        print("\nTrades:")
+        for row in trades_df.iter_rows(named=True):
+            pnl = row["pnl"]
+            tag = "WIN" if pnl > 0 else "LOSS"
+            print(
+                f"  Entry: ${row['entry_price']:.2f} → Exit: ${row['exit_price']:.2f}"
+                f" | PnL: {pnl:+.2f} ({row['pnl_pct']:+.1f}%) | {row['bars_held']} bars | {tag}"
+            )
 
     print("\nNote: This example uses in-sample predictions for simplicity.")
     print("In production, use rolling/expanding window training or walk-forward analysis")

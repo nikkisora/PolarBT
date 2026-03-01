@@ -31,7 +31,7 @@ class SimpleStrategy(Strategy):
     def next(self, ctx: BacktestContext) -> None:
         # Buy when fast SMA crosses above slow SMA
         if ctx.row["sma_fast"] > ctx.row["sma_slow"]:
-            ctx.portfolio.order_target_percent("asset", 1.0)
+            ctx.portfolio.order_target_percent("asset", 0.95)
         else:
             ctx.portfolio.close_position("asset")
 

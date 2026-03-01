@@ -40,12 +40,12 @@ def generate_asset(drift: float, vol: float) -> pl.DataFrame:
     )
 
 
-# Create assets with different characteristics
+# Create assets with distinct characteristics for clear rotation
 assets = {
-    "BTC": generate_asset(0.0005, 0.02),  # high growth, high vol
-    "ETH": generate_asset(0.0003, 0.025),  # medium growth, higher vol
-    "SOL": generate_asset(0.0004, 0.03),  # medium growth, highest vol
-    "BNB": generate_asset(0.0002, 0.015),  # low growth, low vol
+    "BTC": generate_asset(0.002, 0.015),  # strong uptrend, moderate vol
+    "ETH": generate_asset(-0.001, 0.020),  # downtrend, higher vol
+    "SOL": generate_asset(0.0015, 0.018),  # uptrend, high vol
+    "BNB": generate_asset(0.0, 0.012),  # flat, low vol
 }
 
 
@@ -84,8 +84,8 @@ class MomentumRotation(Strategy):
         ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
         top_assets = {name for name, _ in ranked[: self.top_n]}
 
-        # Equal-weight allocation to top assets
-        weight = 1.0 / self.top_n
+        # Equal-weight allocation to top assets (0.95 to leave room for commission)
+        weight = 0.95 / self.top_n
 
         for name in self.asset_names:
             if name in top_assets:

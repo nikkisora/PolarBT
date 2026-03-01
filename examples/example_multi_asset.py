@@ -6,24 +6,30 @@ Example demonstrating multi-asset strategy with features:
 - Standardized column names
 """
 
+# Create sample data for multiple assets with distinct trend regimes.
+# BTC: strong uptrend; ETH: sideways then up — momentum rotation picks the leader.
+import math
+
 import polars as pl
 
 from polarbtest import Strategy, backtest
 from polarbtest import indicators as ind
 from polarbtest.core import BacktestContext
 
-# Create sample data for multiple assets
 btc_data = pl.DataFrame(
     {
-        "date": range(100),  # Will be auto-standardized to "timestamp"
-        "close": [40000 + i * 100 + (i % 10 - 5) * 200 for i in range(100)],
+        "date": range(200),
+        "close": [40000 + i * 80 + 500 * math.sin(i / 15) for i in range(200)],
     }
 )
 
 eth_data = pl.DataFrame(
     {
-        "date": range(100),  # Will be auto-standardized to "timestamp"
-        "close": [2500 + i * 5 + (i % 8 - 4) * 50 for i in range(100)],
+        "date": range(200),
+        "close": [
+            2500 - i * 2 + 300 * math.sin(i / 12) if i < 100 else 2300 + (i - 100) * 20 + 300 * math.sin(i / 12)
+            for i in range(200)
+        ],
     }
 )
 
@@ -51,11 +57,11 @@ class MomentumPortfolio(Strategy):
             return
 
         if btc_mom > eth_mom:
-            ctx.portfolio.order_target_percent("BTC", 1.0)
+            ctx.portfolio.order_target_percent("BTC", 0.95)
             ctx.portfolio.order_target_percent("ETH", 0.0)
         else:
             ctx.portfolio.order_target_percent("BTC", 0.0)
-            ctx.portfolio.order_target_percent("ETH", 1.0)
+            ctx.portfolio.order_target_percent("ETH", 0.95)
 
 
 if __name__ == "__main__":

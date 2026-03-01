@@ -858,6 +858,7 @@ def walk_forward_analysis(
     order_delay: int = 0,
     anchored: bool = False,
     verbose: bool = True,
+    n_jobs: int | None = None,
     borrow_rate: float = 0.0,
     bars_per_day: float | None = None,
     max_position_size: float | None = None,
@@ -886,6 +887,7 @@ def walk_forward_analysis(
         order_delay: Number of bars to delay order execution (default 0)
         anchored: Use anchored walk-forward (default False)
         verbose: Print progress
+        n_jobs: Number of parallel jobs for optimization (default None = all CPUs)
         borrow_rate: Annual borrow rate for short positions (default 0.0)
         bars_per_day: Number of bars in a trading day (default None)
 
@@ -945,6 +947,7 @@ def walk_forward_analysis(
             price_columns=price_columns,
             warmup=warmup,
             order_delay=order_delay,
+            n_jobs=n_jobs,
             verbose=False,
             borrow_rate=borrow_rate,
             bars_per_day=bars_per_day,

@@ -18,18 +18,20 @@ from polarbtest import indicators as ind
 from polarbtest.core import BacktestContext
 from polarbtest.sizers import PercentSizer
 
+# Generate data with clear trending regimes: bull → bear → bull
 N = 500
 BASE_DATE = datetime(2022, 1, 1)
 rng = np.random.default_rng(42)
 
-log_returns = rng.normal(0.0003, 0.015, N)
-log_returns[100:200] += 0.002  # bull run
-log_returns[300:380] -= 0.003  # bear market
+log_returns = rng.normal(0.001, 0.012, N)
+log_returns[0:200] += 0.001  # bull run
+log_returns[200:300] -= 0.002  # bear market
+log_returns[300:500] += 0.001  # recovery
 
 close = 100.0 * np.exp(np.cumsum(log_returns))
-high = close * (1 + rng.uniform(0.002, 0.02, N))
-low = close * (1 - rng.uniform(0.002, 0.02, N))
-opn = close * (1 + rng.normal(0, 0.005, N))
+high = close * (1 + rng.uniform(0.002, 0.015, N))
+low = close * (1 - rng.uniform(0.002, 0.015, N))
+opn = close * (1 + rng.normal(0, 0.003, N))
 volume = rng.uniform(1_000, 50_000, N)
 
 data = pl.DataFrame(
@@ -52,7 +54,7 @@ class SMACrossoverStopLoss(Strategy):
         slow_period: Slow SMA period
         atr_period: ATR period for stop-loss calculation
         atr_sl_mult: ATR multiplier for initial stop-loss distance
-        trail_pct: Trailing stop percentage (e.g., 0.05 = 5%)
+        trail_pct: Trailing stop percentage (e.g., 0.08 = 8%)
     """
 
     def __init__(
@@ -60,8 +62,8 @@ class SMACrossoverStopLoss(Strategy):
         fast_period: int = 10,
         slow_period: int = 30,
         atr_period: int = 14,
-        atr_sl_mult: float = 2.0,
-        trail_pct: float = 0.05,
+        atr_sl_mult: float = 3.0,
+        trail_pct: float = 0.08,
         **kwargs: object,
     ) -> None:
         super().__init__(
@@ -118,7 +120,7 @@ if __name__ == "__main__":
     print("=" * 60)
 
     engine = Engine(
-        strategy=SMACrossoverStopLoss(fast_period=10, slow_period=30, atr_sl_mult=2.0, trail_pct=0.05),
+        strategy=SMACrossoverStopLoss(fast_period=10, slow_period=30, atr_sl_mult=3.0, trail_pct=0.08),
         data=data,
         initial_cash=100_000,
         commission=0.001,
@@ -145,5 +147,6 @@ if __name__ == "__main__":
             pnl = row["pnl"]
             tag = "WIN" if pnl > 0 else "LOSS"
             print(
-                f"  {row['direction']:5s} | Entry: ${row['entry_price']:.2f} → Exit: ${row['exit_price']:.2f} | PnL: {pnl:+.2f} ({row['pnl_pct']:+.1f}%) | {row['bars_held']} bars | {tag}"
+                f"  {row['direction']:5s} | Entry: ${row['entry_price']:.2f} → Exit: ${row['exit_price']:.2f}"
+                f" | PnL: {pnl:+.2f} ({row['pnl_pct']:+.1f}%) | {row['bars_held']} bars | {tag}"
             )

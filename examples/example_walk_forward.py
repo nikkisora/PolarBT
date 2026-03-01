@@ -22,17 +22,17 @@ N = 600
 BASE_DATE = datetime(2022, 1, 1)
 rng = np.random.default_rng(42)
 
-log_returns = rng.normal(0.0003, 0.015, N)
-# Inject regime changes to make walk-forward meaningful
+# Clear regime changes to make walk-forward meaningful
+log_returns = rng.normal(0.001, 0.012, N)
 log_returns[0:150] += 0.001  # mild bull
 log_returns[150:300] -= 0.001  # mild bear
 log_returns[300:450] += 0.002  # strong bull
-log_returns[450:600] -= 0.002  # strong bear
+log_returns[450:600] -= 0.001  # mild bear
 
 close = 100.0 * np.exp(np.cumsum(log_returns))
-high = close * (1 + rng.uniform(0.002, 0.02, N))
-low = close * (1 - rng.uniform(0.002, 0.02, N))
-opn = close * (1 + rng.normal(0, 0.005, N))
+high = close * (1 + rng.uniform(0.002, 0.015, N))
+low = close * (1 - rng.uniform(0.002, 0.015, N))
+opn = close * (1 + rng.normal(0, 0.003, N))
 
 data = pl.DataFrame(
     {
@@ -64,6 +64,9 @@ class TrendFollower(Strategy):
             [
                 ind.sma("close", self.fast_period).alias("sma_fast"),
                 ind.sma("close", self.slow_period).alias("sma_slow"),
+            ]
+        ).with_columns(
+            [
                 ind.crossover("sma_fast", "sma_slow").alias("buy"),
                 ind.crossunder("sma_fast", "sma_slow").alias("sell"),
             ]
@@ -71,14 +74,14 @@ class TrendFollower(Strategy):
 
     def next(self, ctx: BacktestContext) -> None:
         if ctx.row.get("buy"):
-            ctx.portfolio.order_target_percent("asset", 1.0)
+            ctx.portfolio.order_target_percent("asset", 0.95)
         elif ctx.row.get("sell"):
             ctx.portfolio.close_position("asset")
 
 
 param_grid = {
-    "fast_period": [5, 10, 15, 20],
-    "slow_period": [20, 30, 40, 50],
+    "fast_period": [5, 10, 15],
+    "slow_period": [20, 30, 40],
 }
 
 
@@ -106,6 +109,7 @@ if __name__ == "__main__":
         commission=0.001,
         slippage=0.0005,
         anchored=False,  # rolling window (not expanding)
+        n_jobs=1,  # sequential for script compatibility
         verbose=True,
     )
 
@@ -176,6 +180,7 @@ if __name__ == "__main__":
         commission=0.001,
         slippage=0.0005,
         anchored=True,  # expanding window from bar 0
+        n_jobs=1,
         verbose=True,
     )
 

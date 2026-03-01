@@ -92,9 +92,9 @@ class LongShortStrategy(Strategy):
 
         # SMA crossover: go long when fast > slow, short when fast < slow
         if sma_fast > sma_slow and pos <= 0:
-            ctx.portfolio.order_target_percent("asset", 1.0)
+            ctx.portfolio.order_target_percent("asset", 0.95)
         elif sma_fast < sma_slow and pos >= 0:
-            ctx.portfolio.order_target_percent("asset", -1.0)
+            ctx.portfolio.order_target_percent("asset", -0.95)
 
 
 engine = Engine(
