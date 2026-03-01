@@ -30,6 +30,9 @@ dependencies = [
 plotting = [
     "plotly>=5.0.0",
 ]
+talib = [
+    "TA-Lib>=0.4.0",
+]
 dev = [
     "pytest>=7.0.0",
     "ruff>=0.1.0",
@@ -89,6 +92,10 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "plotly.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "talib.*"
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

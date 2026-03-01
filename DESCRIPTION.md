@@ -5,7 +5,7 @@ A lightweight, high-performance backtesting library for trading strategy develop
 **Version**: 0.1.0
 **Python**: >= 3.10
 **Dependencies**: polars >= 0.19.0, numpy >= 1.24.0
-**Optional**: plotly >= 5.0.0 (for visualization)
+**Optional**: plotly >= 5.0.0 (for visualization), TA-Lib >= 0.4.0 (for TA-Lib integration)
 
 ## Architecture
 
@@ -34,9 +34,12 @@ polarbtest/
 ├── commissions.py    # Commission models (CommissionModel, MakerTaker, Tiered, Custom)
 ├── sizers.py         # Position sizing strategies
 ├── runner.py         # backtest(), backtest_batch(), optimize(), walk_forward_analysis()
-└── plotting/
-    ├── __init__.py   # plot_backtest, plot_returns_distribution
-    └── charts.py     # Chart generation using Plotly
+├── plotting/
+│   ├── __init__.py   # plot_backtest, plot_returns_distribution
+│   └── charts.py     # Chart generation using Plotly
+└── integrations/
+    ├── __init__.py   # Optional integrations
+    └── talib.py      # TA-Lib wrapper (optional dependency)
 ```
 
 ## Core Components
@@ -273,6 +276,33 @@ All return Polars expressions for use in `preprocess()`:
 | `ad_line(high, low, close, volume)` | Accumulation/Distribution Line |
 | `pivot_points(high, low, close, method)` | Pivot Points (standard/fibonacci/woodie/camarilla) |
 
+### TA-Lib Integration
+
+Optional TA-Lib wrapper: `pip install polarbtest[talib]`
+
+Provides a `ta` namespace that wraps TA-Lib functions into Polars expressions:
+
+```python
+from polarbtest.integrations.talib import ta
+
+class MyStrategy(Strategy):
+    def preprocess(self, df: pl.DataFrame) -> pl.DataFrame:
+        return df.with_columns([
+            ta.sma("close", 20).alias("sma_20"),
+            ta.rsi("close", 14).alias("rsi"),
+        ])
+```
+
+**Available wrappers:** SMA, EMA, WMA, DEMA, TEMA, KAMA, TRIMA, T3, Bollinger Bands, SAR, RSI, MACD, Stochastic, Williams %R, CCI, MFI, ROC, MOM, ADX, ADXR, APO, PPO, Ultimate Oscillator, Aroon, ATR, NATR, True Range, OBV, A/D Line, A/D Oscillator, candlestick patterns (Doji, Hammer, Engulfing, Morning/Evening Star).
+
+**Generic helpers:**
+- `talib_expr(func, columns, ...)` — wrap any single-output TA-Lib function into a Polars expression
+- `talib_multi_expr(func, columns, ..., output_names)` — wrap multi-output functions into a dict of expressions
+- `talib_series(func, *series, ...)` — apply TA-Lib to Polars Series directly
+- `talib_available()` — check if TA-Lib is installed
+
+Falls back gracefully: raises `ImportError` with install instructions when TA-Lib is not available.
+
 ### Metrics
 
 **`calculate_metrics(equity_df, initial_capital)`** returns:
@@ -348,7 +378,7 @@ results = backtest(MyStrategy, data, params={...})
 
 ## Test Coverage
 
-394 tests passing. Test files:
+441 tests passing. Test files:
 - test_core.py, test_indicators.py, test_orders.py, test_limit_orders.py
 - test_trades.py, test_runner.py, test_warmup.py
 - test_take_profit.py, test_trailing_stop.py, test_bracket_orders.py
@@ -363,3 +393,4 @@ results = backtest(MyStrategy, data, params={...})
 - test_bugfixes.py (SL/TP/trailing stop fill prices, reversal commission, position increase tracking, order_target_percent slippage, monthly returns, warmup equity, daily_win_rate rename)
 - test_margin_leverage.py (leverage buying power, margin methods, leveraged orders, margin calls, Engine/runner integration)
 - test_additional_indicators.py (WMA, HMA, VWAP, SuperTrend, ADX, Stochastic, Williams %R, CCI, MFI, ROC, Keltner Channels, Donchian Channels, OBV, A/D Line, Pivot Points)
+- test_talib_integration.py (TA-Lib wrapper: talib_expr, talib_multi_expr, talib_series, TALibIndicators namespace, graceful fallback)

@@ -67,7 +67,7 @@ Remaining work organized by priority. Each item is a self-contained task.
 - [x] Add margin requirement tracking (`get_margin_used()`, `get_margin_available()`, `get_margin_ratio()`)
 - [x] Implement margin call handling (auto-close positions when margin ratio < maintenance_margin)
 
-## 8. Additional Indicators ✓ COMPLETE (except TA-Lib integration)
+## 8. Additional Indicators ✓ COMPLETE
 
 ### Trend
 - [x] WMA (Weighted Moving Average)
@@ -95,9 +95,9 @@ Remaining work organized by priority. Each item is a self-contained task.
 - [x] Pivot Points (Standard, Fibonacci, Woodie, Camarilla)
 
 ### TA-Lib Integration
-- [ ] Create optional TA-Lib wrapper in `polarbtest/integrations/talib.py` (optional dependency)
-- [ ] Add convenience functions that call TA-Lib and return Polars expressions/Series
-- [ ] Fall back gracefully when TA-Lib is not installed
+- [x] Create optional TA-Lib wrapper in `polarbtest/integrations/talib.py` (optional dependency)
+- [x] Add convenience functions that call TA-Lib and return Polars expressions/Series
+- [x] Fall back gracefully when TA-Lib is not installed
 
 ## 9. Data Utilities
 
