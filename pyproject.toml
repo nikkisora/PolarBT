@@ -110,3 +110,9 @@ addopts = [
     "--strict-markers",
     "--tb=short",
 ]
+
+[dependency-groups]
+dev = [
+    "pyarrow>=23.0.1",
+    "yfinance>=1.2.0",
+]
