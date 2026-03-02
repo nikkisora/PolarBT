@@ -58,9 +58,9 @@ After adding a feature analyze the code changes based on the following pillars:
 ### Cleanup
 
 After finishing implementing, testing and reviewing the feature, always:
-1. Run ruff and mypy
-2. Update `DESCRIPTION.md`, `PLAN.md` and examples if needed
-3. Put the summary of your work in the archive folder
+1. Run ruff and mypy, fix all issues, even not related to what you worked on
+2. Put the summary of your work in the archive folder
+3. Commit changes
 
 ## Module Structure
 
@@ -71,7 +71,18 @@ polarbt/
 ├── trades.py         # Trade, TradeTracker
 ├── indicators.py     # Technical indicators as Polars expressions
 ├── metrics.py        # Performance metrics calculation
-└── runner.py         # Parallel execution and optimization
+├── runner.py         # Parallel execution and optimization
+├── sizers.py         # Position sizing strategies
+├── commissions.py    # Commission models
+├── analysis.py       # Trade and performance analysis
+├── data/
+│   ├── cleaning.py   # Data cleaning utilities
+│   ├── validation.py # Data validation
+│   └── resampling.py # OHLCV resampling
+├── plotting/
+│   └── charts.py     # Charting and visualization
+└── integrations/
+    └── talib.py      # TA-Lib integration
 ```
 
 ## Additional Documentation

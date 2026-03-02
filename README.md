@@ -49,19 +49,22 @@ pip install -e .
 
 ```python
 import polars as pl
-from polarbt import Strategy, backtest
+import yfinance as yf
+from polarbt import Engine, Strategy, format_results
 from polarbt import indicators as ind
 from polarbt.core import BacktestContext
+from polarbt.plotting import plot_backtest
 
 
 class SMACross(Strategy):
     def preprocess(self, df: pl.DataFrame) -> pl.DataFrame:
-        return df.with_columns([
+        return df.with_columns(
             ind.sma("close", 10).alias("sma_fast"),
             ind.sma("close", 30).alias("sma_slow"),
+        ).with_columns(
             ind.crossover("sma_fast", "sma_slow").alias("buy"),
             ind.crossunder("sma_fast", "sma_slow").alias("sell"),
-        ])
+        )
 
     def next(self, ctx: BacktestContext) -> None:
         if ctx.row.get("buy"):
@@ -70,16 +73,64 @@ class SMACross(Strategy):
             ctx.portfolio.close_position("asset")
 
 
-results = backtest(
-    SMACross,
-    pl.DataFrame({"close": [100 + i * 0.5 for i in range(200)]}),
-    params={},
-    initial_cash=100_000,
+# Download data from Yahoo Finance
+ticker = yf.download("AAPL", start="2016-01-01", end="2026-01-01", auto_adjust=True)
+ticker = ticker.droplevel("Ticker", axis=1).reset_index()
+data = pl.from_pandas(ticker).rename(
+    {
+        "Date": "timestamp",
+        "Open": "open",
+        "High": "high",
+        "Low": "low",
+        "Close": "close",
+        "Volume": "volume",
+    }
 )
 
-print(f"Return: {results['total_return']:.2%}")
-print(f"Sharpe: {results['sharpe_ratio']:.2f}")
+# Run backtest
+engine = Engine(SMACross(), data, commission=.005, initial_cash=100_000)
+results = engine.run()
+
+# Pretty-print results
+print(format_results(results))
+
+# Interactive chart saved to HTML
+fig = plot_backtest(engine, title="SMA Crossover — AAPL", indicators=["sma_fast", "sma_slow"])
+fig.write_html("backtest.html")
+
 ```
+
+```text
+Equity Final [$]                        366,237.10
+Equity Peak [$]                         433,931.04
+Return [%]                                  266.24
+Buy & Hold Return [%]                      1044.52
+Return (Ann.) [%]                            14.08
+CAGR [%]                                     14.08
+Volatility (Ann.) [%]                        19.78
+
+Sharpe Ratio                                  0.76
+Sortino Ratio                                 0.92
+Calmar Ratio                                  0.44
+Max. Drawdown [%]                           -32.16
+Avg. Drawdown Duration [bars]                   38
+Max. Drawdown Duration [bars]                  730
+
+# Trades                                        42
+Win Rate [%]                                 47.62
+Best Trade [%]                               57.11
+Worst Trade [%]                             -13.43
+Avg. Trade [%]                                3.94
+Max. Trade Duration [bars]                     128
+Avg. Trade Duration [bars]                      39
+Profit Factor                                 1.79
+Expectancy [$]                             6338.98
+SQN                                           1.27
+Kelly Criterion                             0.2098
+```
+<p align="center">
+  <img src="assets/example_plot.png" alt="PolarBT" width="600">
+</p>
 
 ## Examples
 
