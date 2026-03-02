@@ -129,7 +129,7 @@ SQN                                           1.27
 Kelly Criterion                             0.2098
 ```
 <p align="center">
-  <img src="assets/example_plot.png" alt="PolarBT" width="600">
+  <img src="assets/example_plot.png" alt="PolarBT" width="100%">
 </p>
 
 ## Examples
