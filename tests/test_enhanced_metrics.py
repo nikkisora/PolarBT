@@ -8,6 +8,7 @@ from polarbt.metrics import (
     alpha_beta,
     calculate_metrics,
     drawdown_duration_stats,
+    format_results,
     information_ratio,
     monthly_returns,
     tail_ratio,
@@ -265,3 +266,82 @@ class TestCalculateMetricsEnhanced:
         result = calculate_metrics(df, 100.0)
         assert result["ulcer_index"] >= 0.0
         assert result["drawdown_count"] >= 1
+
+
+class TestFormatResults:
+    def _make_results(self) -> dict:
+        """Create a minimal results dict similar to backtest() output."""
+        trades_df = pl.DataFrame(
+            {
+                "return_pct": [0.05, -0.02, 0.08, -0.01, 0.03],
+                "pnl": [500.0, -200.0, 800.0, -100.0, 300.0],
+                "bars_held": [10, 5, 20, 3, 15],
+            }
+        )
+        return {
+            "final_equity": 110_000.0,
+            "equity_peak": 115_000.0,
+            "initial_equity": 100_000.0,
+            "total_return": 0.10,
+            "buy_hold_return": 0.15,
+            "return_annualized": 0.12,
+            "cagr": 0.12,
+            "volatility_annualized": 0.20,
+            "sharpe_ratio": 1.5,
+            "sortino_ratio": 2.1,
+            "calmar_ratio": 0.8,
+            "max_drawdown": 0.15,
+            "avg_drawdown_duration": 5.0,
+            "max_drawdown_duration": 12.0,
+            "best_trade_pct": 8.0,
+            "worst_trade_pct": -2.0,
+            "avg_trade_pct": 2.6,
+            "max_trade_duration": 20.0,
+            "avg_trade_duration": 10.6,
+            "expectancy": 260.0,
+            "sqn": 2.87,
+            "kelly_criterion": 0.4333,
+            "trades": trades_df,
+            "trade_stats": {
+                "total_trades": 5,
+                "win_rate": 60.0,
+                "profit_factor": 2.67,
+            },
+        }
+
+    def test_contains_key_labels(self) -> None:
+        output = format_results(self._make_results())
+        assert "Equity Final [$]" in output
+        assert "Equity Peak [$]" in output
+        assert "Return [%]" in output
+        assert "Buy & Hold Return [%]" in output
+        assert "Return (Ann.) [%]" in output
+        assert "Sharpe Ratio" in output
+        assert "# Trades" in output
+        assert "Win Rate [%]" in output
+        assert "SQN" in output
+        assert "Kelly Criterion" in output
+
+    def test_values_formatted(self) -> None:
+        output = format_results(self._make_results())
+        assert "110,000.00" in output
+        assert "10.00" in output  # Return [%]
+        assert "1.50" in output  # Sharpe
+
+    def test_empty_trades(self) -> None:
+        results = self._make_results()
+        results["trades"] = pl.DataFrame(schema={"return_pct": pl.Float64, "pnl": pl.Float64, "bars_held": pl.Int64})
+        results["trade_stats"] = {"total_trades": 0, "win_rate": 0.0, "profit_factor": 0.0}
+        output = format_results(results)
+        assert "# Trades" in output
+
+    def test_no_trades_key(self) -> None:
+        results = self._make_results()
+        del results["trades"]
+        output = format_results(results)
+        assert "# Trades" in output
+
+    def test_returns_string(self) -> None:
+        output = format_results(self._make_results())
+        assert isinstance(output, str)
+        assert len(output.splitlines()) > 10

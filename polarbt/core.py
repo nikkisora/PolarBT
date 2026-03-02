@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any
 
+import numpy as np
 import polars as pl
 
 from polarbt.commissions import CommissionModel, make_commission_model
@@ -2392,12 +2393,70 @@ class Engine:
 
         # Add portfolio info
         metrics["final_equity"] = self.portfolio.get_value()
+        metrics["equity_peak"] = float(equity_df["equity"].max()) if len(equity_df) > 0 else self.initial_cash  # type: ignore[arg-type]
         metrics["final_positions"] = dict(self.portfolio.positions)
         metrics["final_cash"] = self.portfolio.cash
 
         # Add trade information
-        metrics["trades"] = self.portfolio.get_trades()
-        metrics["trade_stats"] = self.portfolio.get_trade_stats()
-        metrics["win_rate"] = metrics["trade_stats"]["win_rate"]
+        trades_df = self.portfolio.get_trades()
+        trade_stats = self.portfolio.get_trade_stats()
+        metrics["trades"] = trades_df
+        metrics["trade_stats"] = trade_stats
+        metrics["win_rate"] = trade_stats["win_rate"]
+
+        # Return (Ann.) — same as CAGR, kept as explicit alias
+        metrics["return_annualized"] = metrics.get("cagr", 0.0)
+
+        # Buy & Hold return: compare first vs last close price
+        first_asset = next(iter(self.price_columns), None)
+        if first_asset is not None:
+            price_col = self.price_columns[first_asset]
+            prices = self.data[price_col].drop_nulls()
+            if len(prices) >= 2:
+                first_price = float(prices[0])
+                last_price = float(prices[-1])
+                metrics["buy_hold_return"] = (last_price - first_price) / first_price if first_price != 0 else 0.0
+            else:
+                metrics["buy_hold_return"] = 0.0
+        else:
+            metrics["buy_hold_return"] = 0.0
+
+        # Trade-level detailed metrics from the trades DataFrame
+        if len(trades_df) > 0:
+            pct_col = trades_df["return_pct"]
+            bars_col = trades_df["bars_held"]
+            pnls = trades_df["pnl"].to_list()
+            n = len(pnls)
+
+            metrics["best_trade_pct"] = float(pct_col.max())  # type: ignore[arg-type]
+            metrics["worst_trade_pct"] = float(pct_col.min())  # type: ignore[arg-type]
+            metrics["avg_trade_pct"] = float(pct_col.mean())  # type: ignore[arg-type]
+            metrics["max_trade_duration"] = float(bars_col.max())  # type: ignore[arg-type]
+            metrics["avg_trade_duration"] = float(bars_col.mean())  # type: ignore[arg-type]
+
+            avg_pnl = float(np.mean(pnls))
+            std_pnl = float(np.std(pnls, ddof=1)) if n > 1 else 0.0
+            metrics["expectancy"] = avg_pnl
+            metrics["sqn"] = float(np.sqrt(n) * avg_pnl / std_pnl) if std_pnl > 0 else 0.0
+
+            winners = [p for p in pnls if p > 0]
+            losers = [p for p in pnls if p < 0]
+            if winners and losers:
+                wl_ratio = float(np.mean(winners)) / abs(float(np.mean(losers)))
+                win_rate_frac = len(winners) / n
+                metrics["kelly_criterion"] = win_rate_frac - (1 - win_rate_frac) / wl_ratio if wl_ratio > 0 else 0.0
+            elif winners:
+                metrics["kelly_criterion"] = 1.0
+            else:
+                metrics["kelly_criterion"] = 0.0
+        else:
+            metrics["best_trade_pct"] = 0.0
+            metrics["worst_trade_pct"] = 0.0
+            metrics["avg_trade_pct"] = 0.0
+            metrics["max_trade_duration"] = 0.0
+            metrics["avg_trade_duration"] = 0.0
+            metrics["expectancy"] = 0.0
+            metrics["sqn"] = 0.0
+            metrics["kelly_criterion"] = 0.0
 
         return metrics

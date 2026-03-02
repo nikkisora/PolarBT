@@ -539,6 +539,68 @@ def monthly_returns(equity_df: pl.DataFrame) -> pl.DataFrame:
     return monthly.select(["year", "month", "return"])
 
 
+def format_results(results: dict[str, Any], label_width: int = 30) -> str:
+    """Format backtest results as a human-readable summary string.
+
+    Produces a clean, aligned table of key performance metrics similar to
+    backtesting.py output style.
+
+    Args:
+        results: Results dictionary returned by ``backtest()`` or ``Engine.run()``.
+        label_width: Column width for metric labels (default 30).
+
+    Returns:
+        Formatted multi-line string ready for printing.
+
+    Example:
+        >>> results = backtest(MyStrategy, data)
+        >>> print(format_results(results))
+        Equity Final [$]                     168,935.12
+        Return [%]                               68.94
+        ...
+    """
+    trade_stats = results.get("trade_stats", {})
+
+    def _fmt(label: str, value: object, fmt: str = "") -> str:
+        """Format a single metric line."""
+        formatted = f"{value:{fmt}}" if fmt else str(value)
+        return f"{label:<{label_width}}{formatted:>20}"
+
+    lines = [
+        # --- Equity & Returns ---
+        _fmt("Equity Final [$]", results.get("final_equity", 0), ",.2f"),
+        _fmt("Equity Peak [$]", results.get("equity_peak", results.get("initial_equity", 0)), ",.2f"),
+        _fmt("Return [%]", results.get("total_return", 0) * 100, ".2f"),
+        _fmt("Buy & Hold Return [%]", results.get("buy_hold_return", 0) * 100, ".2f"),
+        _fmt("Return (Ann.) [%]", results.get("return_annualized", 0) * 100, ".2f"),
+        _fmt("CAGR [%]", results.get("cagr", 0) * 100, ".2f"),
+        _fmt("Volatility (Ann.) [%]", results.get("volatility_annualized", 0) * 100, ".2f"),
+        "",
+        # --- Risk Metrics ---
+        _fmt("Sharpe Ratio", results.get("sharpe_ratio", 0), ".2f"),
+        _fmt("Sortino Ratio", results.get("sortino_ratio", 0), ".2f"),
+        _fmt("Calmar Ratio", results.get("calmar_ratio", 0), ".2f"),
+        _fmt("Max. Drawdown [%]", results.get("max_drawdown", 0) * -100, ".2f"),
+        _fmt("Avg. Drawdown Duration [bars]", results.get("avg_drawdown_duration", 0), ".0f"),
+        _fmt("Max. Drawdown Duration [bars]", results.get("max_drawdown_duration", 0), ".0f"),
+        "",
+        # --- Trade Statistics ---
+        _fmt("# Trades", trade_stats.get("total_trades", 0), "d"),
+        _fmt("Win Rate [%]", trade_stats.get("win_rate", 0), ".2f"),
+        _fmt("Best Trade [%]", results.get("best_trade_pct", 0), ".2f"),
+        _fmt("Worst Trade [%]", results.get("worst_trade_pct", 0), ".2f"),
+        _fmt("Avg. Trade [%]", results.get("avg_trade_pct", 0), ".2f"),
+        _fmt("Max. Trade Duration [bars]", results.get("max_trade_duration", 0), ".0f"),
+        _fmt("Avg. Trade Duration [bars]", results.get("avg_trade_duration", 0), ".0f"),
+        _fmt("Profit Factor", trade_stats.get("profit_factor", 0), ".2f"),
+        _fmt("Expectancy [$]", results.get("expectancy", 0), ".2f"),
+        _fmt("SQN", results.get("sqn", 0), ".2f"),
+        _fmt("Kelly Criterion", results.get("kelly_criterion", 0), ".4f"),
+    ]
+
+    return "\n".join(lines)
+
+
 def trade_level_metrics(trades: list[Any]) -> dict[str, float]:
     """Calculate trade-level metrics from a list of Trade objects.
 
