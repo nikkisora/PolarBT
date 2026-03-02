@@ -316,10 +316,149 @@ def plot_backtest(
     # Ensure the bottom subplot shows x-axis tick labels (timestamps)
     fig.update_xaxes(showticklabels=True, row=num_rows, col=1)
 
+    # Patch write_html and show to always include scroll-wheel zoom and auto y-axis fit
+    fig.update_layout(dragmode="zoom")
+    _patch_interactive(fig)
+
     if save_html is not None:
         fig.write_html(save_html)
 
     return fig
+
+
+def _patch_interactive(fig: Any) -> None:
+    """Patch a Figure's write_html/show to inject scroll-zoom and auto y-fit JS."""
+    import types
+
+    original_write_html = fig.write_html
+    original_show = fig.show
+
+    def patched_write_html(self: Any, *args: Any, **kwargs: Any) -> None:
+        kwargs.setdefault("config", {})
+        kwargs["config"].setdefault("scrollZoom", True)
+        existing = kwargs.get("post_script") or []
+        if _AUTO_YFIT_JS not in existing:
+            existing = list(existing) + [_AUTO_YFIT_JS]
+        kwargs["post_script"] = existing
+        return original_write_html(*args, **kwargs)
+
+    def patched_show(self: Any, *args: Any, **kwargs: Any) -> None:
+        kwargs.setdefault("config", {})
+        kwargs["config"].setdefault("scrollZoom", True)
+        return original_show(*args, **kwargs)
+
+    fig.write_html = types.MethodType(patched_write_html, fig)
+    fig.show = types.MethodType(patched_show, fig)
+
+
+_AUTO_YFIT_JS = """
+(function() {
+    var gd = document.getElementsByClassName('plotly-graph-div')[0];
+    if (!gd) return;
+
+    var busy = false;
+
+    function parseX(v) {
+        if (typeof v === 'number') return v;
+        var d = new Date(v);
+        return isNaN(d.getTime()) ? parseFloat(v) : d.getTime();
+    }
+
+    function yRefToKey(ref) {
+        if (!ref || ref === 'y') return 'yaxis';
+        return 'yaxis' + ref.substring(1);
+    }
+
+    function xRefToKey(ref) {
+        if (!ref || ref === 'x') return 'xaxis';
+        return 'xaxis' + ref.substring(1);
+    }
+
+    gd.on('plotly_relayout', function(ed) {
+        if (busy) return;
+
+        var keys = Object.keys(ed);
+
+        // Detect autorange reset (double-click)
+        var isAutorange = false;
+        for (var i = 0; i < keys.length; i++) {
+            if (/^xaxis\\d*\\.autorange$/.test(keys[i])) isAutorange = true;
+        }
+        if (isAutorange) {
+            var yUpd = {};
+            var layoutKeys = Object.keys(gd.layout);
+            for (var i = 0; i < layoutKeys.length; i++) {
+                if (/^yaxis\\d*$/.test(layoutKeys[i]) && !gd.layout[layoutKeys[i]].fixedrange) {
+                    yUpd[layoutKeys[i] + '.autorange'] = true;
+                }
+            }
+            if (Object.keys(yUpd).length > 0) {
+                busy = true;
+                Plotly.relayout(gd, yUpd).then(function() { busy = false; });
+            }
+            return;
+        }
+
+        // Check if any x-axis range changed
+        var hasXChange = false;
+        for (var i = 0; i < keys.length; i++) {
+            if (/^xaxis\\d*\\.range/.test(keys[i])) { hasXChange = true; break; }
+        }
+        if (!hasXChange) return;
+
+        // For each trace, read x-range from its own x-axis in the live layout
+        var yAxesData = {};
+        var traces = gd.data;
+
+        for (var t = 0; t < traces.length; t++) {
+            var trace = traces[t];
+            var yKey = yRefToKey(trace.yaxis);
+            var xKey = xRefToKey(trace.xaxis);
+
+            if (gd.layout[yKey] && gd.layout[yKey].fixedrange) continue;
+
+            // Read the live x-range from _fullLayout (reflects shared_xaxes)
+            var ax = gd._fullLayout[xKey];
+            if (!ax || !ax.range) continue;
+            var xMinVal = parseX(ax.range[0]);
+            var xMaxVal = parseX(ax.range[1]);
+
+            if (!yAxesData[yKey]) yAxesData[yKey] = [];
+
+            var xData = trace.x || [];
+            var yData = trace.y || [];
+            var highData = trace.high;
+            var lowData = trace.low;
+            var closeData = trace.close;
+
+            for (var j = 0; j < xData.length; j++) {
+                var xv = parseX(xData[j]);
+                if (xv >= xMinVal && xv <= xMaxVal) {
+                    if (yData[j] != null && isFinite(yData[j])) yAxesData[yKey].push(yData[j]);
+                    if (highData && highData[j] != null && isFinite(highData[j])) yAxesData[yKey].push(highData[j]);
+                    if (lowData && lowData[j] != null && isFinite(lowData[j])) yAxesData[yKey].push(lowData[j]);
+                    if (closeData && closeData[j] != null && isFinite(closeData[j])) yAxesData[yKey].push(closeData[j]);
+                }
+            }
+        }
+
+        var update = {};
+        var yKeys = Object.keys(yAxesData);
+        for (var i = 0; i < yKeys.length; i++) {
+            var vals = yAxesData[yKeys[i]];
+            if (vals.length === 0) continue;
+            var yMin = Math.min.apply(null, vals);
+            var yMax = Math.max.apply(null, vals);
+            var pad = (yMax - yMin) * 0.05 || 1;
+            update[yKeys[i] + '.range'] = [yMin - pad, yMax + pad];
+        }
+        if (Object.keys(update).length > 0) {
+            busy = true;
+            Plotly.relayout(gd, update).then(function() { busy = false; });
+        }
+    });
+})();
+"""
 
 
 def plot_returns_distribution(
