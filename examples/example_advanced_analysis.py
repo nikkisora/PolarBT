@@ -23,6 +23,7 @@ from polarbt import (
     detect_look_ahead_bias,
     monte_carlo,
     optimize,
+    param,
     permutation_test,
 )
 from polarbt import indicators as ind
@@ -85,28 +86,11 @@ class RSIBollingerStrategy(Strategy):
         atr_sl_mult: ATR multiplier for stop-loss distance
     """
 
-    def __init__(
-        self,
-        rsi_period: int = 14,
-        bb_period: int = 20,
-        rsi_buy: int = 30,
-        rsi_sell: int = 70,
-        atr_sl_mult: float = 2.0,
-        **kwargs: object,
-    ) -> None:
-        super().__init__(
-            rsi_period=rsi_period,
-            bb_period=bb_period,
-            rsi_buy=rsi_buy,
-            rsi_sell=rsi_sell,
-            atr_sl_mult=atr_sl_mult,
-            **kwargs,
-        )
-        self.rsi_period = rsi_period
-        self.bb_period = bb_period
-        self.rsi_buy = rsi_buy
-        self.rsi_sell = rsi_sell
-        self.atr_sl_mult = atr_sl_mult
+    rsi_period = param(14)
+    bb_period = param(20)
+    rsi_buy = param(30)
+    rsi_sell = param(70)
+    atr_sl_mult = param(2.0)
 
     def preprocess(self, df: pl.DataFrame) -> pl.DataFrame:
         if USE_TALIB:

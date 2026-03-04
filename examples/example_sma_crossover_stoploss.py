@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 import numpy as np
 import polars as pl
 
-from polarbt import Engine, Strategy
+from polarbt import Engine, Strategy, param
 from polarbt import indicators as ind
 from polarbt.core import BacktestContext
 from polarbt.sizers import PercentSizer
@@ -57,28 +57,11 @@ class SMACrossoverStopLoss(Strategy):
         trail_pct: Trailing stop percentage (e.g., 0.08 = 8%)
     """
 
-    def __init__(
-        self,
-        fast_period: int = 10,
-        slow_period: int = 30,
-        atr_period: int = 14,
-        atr_sl_mult: float = 3.0,
-        trail_pct: float = 0.08,
-        **kwargs: object,
-    ) -> None:
-        super().__init__(
-            fast_period=fast_period,
-            slow_period=slow_period,
-            atr_period=atr_period,
-            atr_sl_mult=atr_sl_mult,
-            trail_pct=trail_pct,
-            **kwargs,
-        )
-        self.fast_period = fast_period
-        self.slow_period = slow_period
-        self.atr_period = atr_period
-        self.atr_sl_mult = atr_sl_mult
-        self.trail_pct = trail_pct
+    fast_period = param(10)
+    slow_period = param(30)
+    atr_period = param(14)
+    atr_sl_mult = param(3.0)
+    trail_pct = param(0.08)
 
     def preprocess(self, df: pl.DataFrame) -> pl.DataFrame:
         return df.with_columns(

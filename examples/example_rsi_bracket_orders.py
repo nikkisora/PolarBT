@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 import numpy as np
 import polars as pl
 
-from polarbt import Engine, Strategy
+from polarbt import Engine, Strategy, param
 from polarbt import indicators as ind
 from polarbt.core import BacktestContext
 
@@ -55,31 +55,12 @@ class RSIBracketStrategy(Strategy):
         tp_pct: Take-profit percentage above entry
     """
 
-    def __init__(
-        self,
-        rsi_period: int = 14,
-        bb_period: int = 20,
-        rsi_buy: int = 30,
-        rsi_sell: int = 70,
-        sl_pct: float = 0.03,
-        tp_pct: float = 0.05,
-        **kwargs: object,
-    ) -> None:
-        super().__init__(
-            rsi_period=rsi_period,
-            bb_period=bb_period,
-            rsi_buy=rsi_buy,
-            rsi_sell=rsi_sell,
-            sl_pct=sl_pct,
-            tp_pct=tp_pct,
-            **kwargs,
-        )
-        self.rsi_period = rsi_period
-        self.bb_period = bb_period
-        self.rsi_buy = rsi_buy
-        self.rsi_sell = rsi_sell
-        self.sl_pct = sl_pct
-        self.tp_pct = tp_pct
+    rsi_period = param(14)
+    bb_period = param(20)
+    rsi_buy = param(30)
+    rsi_sell = param(70)
+    sl_pct = param(0.03)
+    tp_pct = param(0.05)
 
     def preprocess(self, df: pl.DataFrame) -> pl.DataFrame:
         bb = ind.bollinger_bands("close", self.bb_period)

@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 import numpy as np
 import polars as pl
 
-from polarbt import Engine, Strategy
+from polarbt import Engine, Strategy, param
 from polarbt import indicators as ind
 from polarbt.core import BacktestContext
 
@@ -57,11 +57,9 @@ class MomentumRotation(Strategy):
         top_n: Number of top assets to hold
     """
 
-    def __init__(self, lookback: int = 20, top_n: int = 2, **kwargs: object) -> None:
-        super().__init__(lookback=lookback, top_n=top_n, **kwargs)
-        self.lookback = lookback
-        self.top_n = top_n
-        self.asset_names = ["BTC", "ETH", "SOL", "BNB"]
+    lookback = param(20)
+    top_n = param(2)
+    asset_names = ["BTC", "ETH", "SOL", "BNB"]
 
     def preprocess(self, df: pl.DataFrame) -> pl.DataFrame:
         cols = []

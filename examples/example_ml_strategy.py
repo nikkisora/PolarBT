@@ -18,7 +18,7 @@ from datetime import datetime, timedelta
 import numpy as np
 import polars as pl
 
-from polarbt import Engine, Strategy
+from polarbt import Engine, Strategy, param
 from polarbt import indicators as ind
 from polarbt.core import BacktestContext
 
@@ -81,21 +81,10 @@ class MLStrategy(Strategy):
         threshold: Minimum predicted return to enter (e.g., 0.0002 = 0.02%)
     """
 
-    def __init__(
-        self,
-        rsi_period: int = 14,
-        sma_period: int = 20,
-        vol_period: int = 20,
-        threshold: float = 0.0002,
-        **kwargs: object,
-    ) -> None:
-        super().__init__(
-            rsi_period=rsi_period, sma_period=sma_period, vol_period=vol_period, threshold=threshold, **kwargs
-        )
-        self.rsi_period = rsi_period
-        self.sma_period = sma_period
-        self.vol_period = vol_period
-        self.threshold = threshold
+    rsi_period = param(14)
+    sma_period = param(20)
+    vol_period = param(20)
+    threshold = param(0.0002)
 
     def preprocess(self, df: pl.DataFrame) -> pl.DataFrame:
         # Step 1: compute features using vectorized indicators
