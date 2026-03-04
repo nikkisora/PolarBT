@@ -294,7 +294,7 @@ if __name__ == "__main__":
     print(f"  Max Drawdown:  {results.max_drawdown:.2%}")
     print(f"  Calmar Ratio:  {results.calmar_ratio:.3f}")
     print(f"  Trades:        {trade_stats.total_trades} ({trade_stats.winning_trades}W / {trade_stats.losing_trades}L)")
-    print(f"  Win Rate:      {trade_stats.win_rate:.1f}%")
+    print(f"  Win Rate:      {trade_stats.win_rate:.1%}")
     print(f"  Profit Factor: {trade_stats.profit_factor:.2f}")
 
     fig_bt = plot_backtest(

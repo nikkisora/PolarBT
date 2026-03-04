@@ -60,8 +60,8 @@ def analyze_trades(trades_df: pl.DataFrame) -> None:
 
     print("\nOverall Statistics:")
     print(f"  Total Trades:     {total_trades}")
-    print(f"  Winning Trades:   {len(winning_trades)} ({len(winning_trades) / total_trades * 100:.1f}%)")
-    print(f"  Losing Trades:    {len(losing_trades)} ({len(losing_trades) / total_trades * 100:.1f}%)")
+    print(f"  Winning Trades:   {len(winning_trades)} ({len(winning_trades) / total_trades:.1%})")
+    print(f"  Losing Trades:    {len(losing_trades)} ({len(losing_trades) / total_trades:.1%})")
 
     # P&L statistics
     total_pnl = trades_df["pnl"].sum()

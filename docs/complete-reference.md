@@ -535,7 +535,7 @@ Standalone metric functions (take equity DataFrames with `equity` column):
 | `drawdown_duration_stats` | `(equity_df)` | `dict` |
 | `monthly_returns` | `(equity_df)` | `pl.DataFrame` with year, month, return |
 | `trade_level_metrics` | `(trades_list)` | `dict` with expectancy, sqn, kelly |
-| `format_results` | `(results_dict, label_width=30)` | `str` — pretty-printed summary |
+| `format_results` | `(results, label_width=30)` | `str` — pretty-printed summary |
 
 ## Plotting
 
@@ -571,7 +571,7 @@ Access trades:
 ```python
 trades_df = engine.portfolio.get_trades()          # pl.DataFrame
 trades_list = engine.portfolio.trade_tracker.trades # list[Trade]
-stats = engine.portfolio.get_trade_stats()          # dict
+stats = engine.portfolio.get_trade_stats()          # TradeStats
 ```
 
 ## TA-Lib Integration

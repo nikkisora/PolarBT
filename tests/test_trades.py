@@ -80,8 +80,8 @@ class TestTrade:
         )
 
         # pnl = 55000 - 50000 - 50 - 55 = 4895
-        # pnl_pct = 4895 / 50000 * 100 = 9.79%
-        assert abs(trade.pnl_pct - 9.79) < 0.01
+        # pnl_pct = 4895 / 50000 = 0.0979
+        assert abs(trade.pnl_pct - 0.0979) < 0.0001
 
     def test_is_winner(self):
         """Test is_winner method."""
@@ -344,7 +344,7 @@ class TestTradeTracker:
         assert stats.total_trades == 2
         assert stats.winning_trades == 1
         assert stats.losing_trades == 1
-        assert stats.win_rate == 50.0
+        assert stats.win_rate == 0.5
         assert stats.avg_win > 0
         assert stats.avg_loss > 0
         assert stats.profit_factor > 0

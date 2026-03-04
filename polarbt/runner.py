@@ -855,6 +855,7 @@ def walk_forward_analysis(
     test_periods: int,
     objective: str = "sharpe_ratio",
     maximize: bool = True,
+    constraint: Callable[[dict[str, Any]], bool] | None = None,
     initial_cash: float = 100_000.0,
     commission: float | tuple[float, float] | CommissionModel = 0.001,
     slippage: float = 0.0005,
@@ -874,28 +875,28 @@ def walk_forward_analysis(
     maintenance_margin: float | None = None,
     fractional_shares: bool = True,
 ) -> pl.DataFrame:
-    """
-    Perform walk-forward analysis.
+    """Perform walk-forward analysis.
 
     Args:
-        strategy_class: Strategy class
-        data: Price data (must have timestamp column)
-        param_grid: Parameter grid for optimization
-        train_periods: Number of periods for training
-        test_periods: Number of periods for testing
-        objective: Metric to optimize
-        maximize: Whether to maximize objective
-        initial_cash: Starting capital
-        commission: Commission as a percentage or tuple of (fixed_commission, percent_commission)
-        slippage: Slippage rate
-        price_columns: Asset price columns
-        warmup: Number of bars to skip or "auto" (default "auto")
-        order_delay: Number of bars to delay order execution (default 0)
-        anchored: Use anchored walk-forward (default False)
-        verbose: Print progress
-        n_jobs: Number of parallel jobs for optimization (default None = all CPUs)
-        borrow_rate: Annual borrow rate for short positions (default 0.0)
-        bars_per_day: Number of bars in a trading day (default None)
+        strategy_class: Strategy class.
+        data: Price data (must have timestamp column).
+        param_grid: Parameter grid for optimization.
+        train_periods: Number of periods for training.
+        test_periods: Number of periods for testing.
+        objective: Metric to optimize.
+        maximize: Whether to maximize objective.
+        constraint: Optional callable to filter parameter combinations.
+        initial_cash: Starting capital.
+        commission: Commission rate.
+        slippage: Slippage rate.
+        price_columns: Asset price columns.
+        warmup: Number of bars to skip or "auto" (default "auto").
+        order_delay: Number of bars to delay order execution (default 0).
+        anchored: Use anchored walk-forward (default False).
+        verbose: Print progress.
+        n_jobs: Number of parallel jobs for optimization (default None = all CPUs).
+        borrow_rate: Annual borrow rate for short positions (default 0.0).
+        bars_per_day: Number of bars in a trading day (default None).
 
     Returns:
         DataFrame with walk-forward results
@@ -947,6 +948,7 @@ def walk_forward_analysis(
             param_grid=param_grid,
             objective=objective,
             maximize=maximize,
+            constraint=constraint,
             initial_cash=initial_cash,
             commission=commission,
             slippage=slippage,

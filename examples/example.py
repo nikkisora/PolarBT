@@ -7,7 +7,7 @@ import math
 
 import polars as pl
 
-from polarbt import Strategy, backtest
+from polarbt import Strategy, backtest, optimize
 from polarbt import indicators as ind
 from polarbt.core import BacktestContext
 
@@ -65,6 +65,25 @@ if __name__ == "__main__":
     print(f"  Max Drawdown:    {results.max_drawdown:.2%}")
     print(f"  Final Equity:    ${results.final_equity:,.2f}")
     print(f"  Trades:          {results.trade_stats.total_trades}")
+
+    # Run optimization with constraint to skip nonsensical parameter combos
+    param_grid = {"fast_period": [5, 10, 15], "slow_period": [10, 20, 30]}
+
+    best = optimize(
+        SMACrossStrategy,
+        data,
+        param_grid=param_grid,
+        objective="sharpe_ratio",
+        constraint=lambda p: p["fast_period"] < p["slow_period"],
+        initial_cash=100_000,
+        n_jobs=1,
+        verbose=True,
+    )
+
+    print("\nOptimization Results:")
+    print(f"  Best fast_period: {best['fast_period']}")
+    print(f"  Best slow_period: {best['slow_period']}")
+    print(f"  Sharpe Ratio:     {best['sharpe_ratio']:.3f}")
 
     print("\n" + "=" * 50)
     print("Example completed successfully!")

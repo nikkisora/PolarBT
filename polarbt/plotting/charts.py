@@ -863,14 +863,14 @@ def _add_pnl_chart(
     for i in range(len(entry_bars)):
         eb = entry_bars[i]
         xb = exit_bars[i]
-        pnl_frac = pnl_pcts[i] / 100.0
+        pnl_frac = pnl_pcts[i]
         color = GREEN if pnls[i] > 0 else RED
         x0 = timestamps[eb] if eb < len(timestamps) else eb
         x1 = timestamps[xb] if xb < len(timestamps) else xb
         d = directions[i]
         bh = bars_held[i]
 
-        hover = f"{'Long' if d == 'long' else 'Short'}<br>PnL: {pnls[i]:+.2f} ({pnl_pcts[i]:+.1f}%)<br>Bars held: {bh}"
+        hover = f"{'Long' if d == 'long' else 'Short'}<br>PnL: {pnls[i]:+.2f} ({pnl_pcts[i]:+.1%})<br>Bars held: {bh}"
 
         # Line from entry at 0% to exit at PnL%
         fig.add_trace(

@@ -22,7 +22,7 @@ class TradeStats:
         total_trades: Total number of closed trades.
         winning_trades: Number of winning trades.
         losing_trades: Number of losing trades.
-        win_rate: Win rate as percentage (e.g., 60.0 means 60%).
+        win_rate: Win rate as fraction (e.g., 0.60 = 60%).
         avg_win: Average winning P&L in dollars.
         avg_loss: Average losing P&L in dollars (positive value).
         avg_pnl: Average P&L per trade.
@@ -71,12 +71,12 @@ class BacktestMetrics:
         final_cash: Remaining cash.
         trades: DataFrame of all completed trades.
         trade_stats: Aggregate trade statistics.
-        win_rate: Win rate as percentage.
+        win_rate: Win rate as fraction (e.g., 0.60 = 60%).
         return_annualized: Same as CAGR (explicit alias).
         buy_hold_return: Buy-and-hold return of first asset.
-        best_trade_pct: Best trade return percentage.
-        worst_trade_pct: Worst trade return percentage.
-        avg_trade_pct: Average trade return percentage.
+        best_trade_pct: Best trade return as fraction (e.g., 0.05 = 5%).
+        worst_trade_pct: Worst trade return as fraction (e.g., -0.03 = -3%).
+        avg_trade_pct: Average trade return as fraction.
         max_trade_duration: Longest trade in bars.
         avg_trade_duration: Average trade duration in bars.
         expectancy: Average P&L per trade in dollars.

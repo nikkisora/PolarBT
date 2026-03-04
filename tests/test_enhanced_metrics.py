@@ -294,9 +294,9 @@ class TestFormatResults:
             max_drawdown=0.15,
             avg_drawdown_duration=5.0,
             max_drawdown_duration=12.0,
-            best_trade_pct=8.0,
-            worst_trade_pct=-2.0,
-            avg_trade_pct=2.6,
+            best_trade_pct=0.08,
+            worst_trade_pct=-0.02,
+            avg_trade_pct=0.026,
             max_trade_duration=20.0,
             avg_trade_duration=10.6,
             expectancy=260.0,
@@ -305,7 +305,7 @@ class TestFormatResults:
             trades=trades_df,
             trade_stats=TradeStats(
                 total_trades=5,
-                win_rate=60.0,
+                win_rate=0.6,
                 profit_factor=2.67,
             ),
         )

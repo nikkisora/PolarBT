@@ -105,6 +105,7 @@ if __name__ == "__main__":
         train_periods=150,  # train on 150 bars
         test_periods=75,  # test on 75 bars
         objective="sharpe_ratio",
+        constraint=valid_params,
         initial_cash=100_000,
         commission=0.001,
         slippage=0.0005,

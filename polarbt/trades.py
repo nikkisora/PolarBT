@@ -42,8 +42,8 @@ class Trade:
         exit_commission: Commission paid on exit
 
         pnl: Profit/loss (exit_value - entry_value - commissions)
-        pnl_pct: Profit/loss percentage
-        return_pct: Return percentage (pnl / entry_value)
+        pnl_pct: Profit/loss as fraction (e.g., 0.04 = 4%)
+        return_pct: Return as fraction (pnl / entry_value)
         bars_held: Number of bars position was held
 
         mae: Maximum Adverse Excursion (worst drawdown during trade)
@@ -68,7 +68,7 @@ class Trade:
             exit_value=52000
         )
         # trade.pnl = 2000
-        # trade.pnl_pct = 4.0
+        # trade.pnl_pct = 0.04
     """
 
     trade_id: str
@@ -113,7 +113,7 @@ class Trade:
         self.pnl = gross_pnl - self.entry_commission - self.exit_commission
 
         if self.entry_value > 0:
-            self.pnl_pct = (self.pnl / self.entry_value) * 100
+            self.pnl_pct = self.pnl / self.entry_value
             self.return_pct = self.pnl_pct
         else:
             self.pnl_pct = 0.0
@@ -448,7 +448,7 @@ class TradeTracker:
             total_trades=len(self.trades),
             winning_trades=len(winners),
             losing_trades=len(losers),
-            win_rate=len(winners) / len(self.trades) * 100 if self.trades else 0.0,
+            win_rate=len(winners) / len(self.trades) if self.trades else 0.0,
             avg_win=total_wins / len(winners) if winners else 0.0,
             avg_loss=total_losses / len(losers) if losers else 0.0,
             avg_pnl=sum(t.pnl for t in self.trades) / len(self.trades),
