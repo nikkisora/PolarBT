@@ -3,9 +3,12 @@ name: Publish to PyPI
 on:
   release:
     types: [published]
+  push:
+    branches: [main]
 
 permissions:
   id-token: write
+  contents: write
 
 jobs:
   publish:
@@ -13,10 +16,32 @@ jobs:
     environment: pypi
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Auto-increment patch version
+        if: github.event_name == 'push'
+        run: |
+          current=$(python -c "import re; print(re.search(r'version\s*=\s*\"(.+?)\"', open('pyproject.toml').read()).group(1))")
+          IFS='.' read -r major minor patch <<< "$current"
+          new="${major}.${minor}.$((patch + 1))"
+          sed -i "s/version = \"${current}\"/version = \"${new}\"/" pyproject.toml
+          sed -i "s/__version__ = \"${current}\"/__version__ = \"${new}\"/" polarbt/__init__.py
+          echo "VERSION=${new}" >> "$GITHUB_ENV"
+          echo "Bumped version: ${current} -> ${new}"
+
+      - name: Commit version bump
+        if: github.event_name == 'push'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add pyproject.toml polarbt/__init__.py
+          git commit -m "Bump version to ${VERSION}" || echo "No changes to commit"
+          git push
 
       - name: Install build dependencies
         run: pip install build
