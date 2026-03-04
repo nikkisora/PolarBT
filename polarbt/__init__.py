@@ -53,7 +53,7 @@ try:
 except ImportError:
     plotting = None  # type: ignore[assignment]
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 __all__ = [
     "Strategy",
     "Portfolio",
