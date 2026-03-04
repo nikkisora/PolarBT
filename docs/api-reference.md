@@ -16,6 +16,16 @@ Base class for all strategies.
 | `on_start(portfolio)` | Optional. Called before first bar. |
 | `on_finish(portfolio)` | Optional. Called after last bar. |
 
+### `param(default=None)`
+
+Descriptor for declaring strategy parameters as class attributes. Reads from / writes to `self.params`.
+
+```python
+class MyStrategy(Strategy):
+    fast = param(10)
+    slow = param(30)
+```
+
 ### `BacktestContext`
 
 Passed to `strategy.next()` each bar.

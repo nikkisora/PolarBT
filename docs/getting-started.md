@@ -24,18 +24,19 @@ Every PolarBT strategy has two methods:
 ```python
 import polars as pl
 
-from polarbt import Strategy, backtest
+from polarbt import Strategy, backtest, param
 from polarbt import indicators as ind
 from polarbt.core import BacktestContext
 
 
 class SMACross(Strategy):
+    fast_period = param(10)
+    slow_period = param(30)
+
     def preprocess(self, df: pl.DataFrame) -> pl.DataFrame:
-        fast = self.params.get("fast_period", 10)
-        slow = self.params.get("slow_period", 30)
         return df.with_columns([
-            ind.sma("close", fast).alias("sma_fast"),
-            ind.sma("close", slow).alias("sma_slow"),
+            ind.sma("close", self.fast_period).alias("sma_fast"),
+            ind.sma("close", self.slow_period).alias("sma_slow"),
             ind.crossover("sma_fast", "sma_slow").alias("buy_signal"),
             ind.crossunder("sma_fast", "sma_slow").alias("sell_signal"),
         ])

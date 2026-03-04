@@ -32,6 +32,7 @@ from polarbt.core import (
     Portfolio,
     Strategy,
     merge_asset_dataframes,
+    param,
     standardize_dataframe,
 )
 from polarbt.metrics import format_results
@@ -57,6 +58,7 @@ except ImportError:
 __version__ = "0.1.3"
 __all__ = [
     "Strategy",
+    "param",
     "Portfolio",
     "Engine",
     "BacktestContext",

@@ -2030,6 +2030,61 @@ class Portfolio:
         self.timestamps.append(timestamp)
 
 
+class Param:
+    """Descriptor that reads/writes strategy parameters through ``self.params``.
+
+    Use the :func:`param` factory to create instances on a Strategy subclass::
+
+        class MyStrategy(Strategy):
+            fast = param(10)
+            slow = param(30)
+
+    When accessed on an instance, the descriptor returns
+    ``self.params.get(name, default)``.  When set, it writes into
+    ``self.params[name]``.
+    """
+
+    def __init__(self, default: Any = None) -> None:
+        self.default = default
+        self.name: str = ""
+
+    def __set_name__(self, owner: type, name: str) -> None:
+        self.name = name
+
+    def __get__(self, obj: Any, objtype: type | None = None) -> Any:
+        if obj is None:
+            return self
+        return obj.params.get(self.name, self.default)
+
+    def __set__(self, obj: Any, value: Any) -> None:
+        obj.params[self.name] = value
+
+
+def param(default: Any = None) -> Any:
+    """Declare a strategy parameter with an optional default value.
+
+    Usage::
+
+        class MyStrategy(Strategy):
+            fast_period = param(10)
+            slow_period = param(30)
+
+            def preprocess(self, df):
+                return df.with_columns(
+                    ind.sma("close", self.fast_period).alias("sma_fast"),
+                    ind.sma("close", self.slow_period).alias("sma_slow"),
+                )
+
+    Parameters declared with ``param()`` are automatically populated from
+    keyword arguments passed to ``Strategy.__init__()`` (or via ``backtest(params=...)``).
+    No ``__init__`` override is needed.
+
+    Args:
+        default: Default value when the parameter is not provided.
+    """
+    return Param(default)
+
+
 class Strategy(ABC):
     """
     Base class for trading strategies.
@@ -2037,6 +2092,16 @@ class Strategy(ABC):
     Subclasses should implement:
     - preprocess(): Vectorized feature engineering using Polars
     - next(): Event-driven logic called on each bar
+
+    Strategy parameters can be declared as class attributes using :func:`param`::
+
+        class MyStrategy(Strategy):
+            fast = param(10)
+            slow = param(30)
+
+    These are automatically populated from keyword arguments and accessible
+    as ``self.fast`` / ``self.slow``.  The traditional ``self.params.get()``
+    pattern is also supported.
     """
 
     def __init__(self, **params: Any) -> None:

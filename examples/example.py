@@ -7,7 +7,7 @@ import math
 
 import polars as pl
 
-from polarbt import Strategy, backtest, optimize
+from polarbt import Strategy, backtest, optimize, param
 from polarbt import indicators as ind
 from polarbt.core import BacktestContext
 
@@ -21,15 +21,16 @@ data = pl.DataFrame(
 
 # Define a simple moving average crossover strategy
 class SMACrossStrategy(Strategy):
+    fast_period = param(10)
+    slow_period = param(20)
+
     def preprocess(self, df: pl.DataFrame) -> pl.DataFrame:
         """Calculate moving averages and crossover signals using vectorized Polars operations."""
-        fast_period = self.params.get("fast_period", 10)
-        slow_period = self.params.get("slow_period", 20)
 
         return df.with_columns(
             [
-                ind.sma("close", fast_period).alias("sma_fast"),
-                ind.sma("close", slow_period).alias("sma_slow"),
+                ind.sma("close", self.fast_period).alias("sma_fast"),
+                ind.sma("close", self.slow_period).alias("sma_slow"),
             ]
         ).with_columns(
             [

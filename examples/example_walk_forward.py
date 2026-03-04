@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 import numpy as np
 import polars as pl
 
-from polarbt import Strategy, optimize
+from polarbt import Strategy, optimize, param
 from polarbt import indicators as ind
 from polarbt.core import BacktestContext
 from polarbt.runner import walk_forward_analysis
@@ -54,10 +54,8 @@ class TrendFollower(Strategy):
         slow_period: Slow SMA period
     """
 
-    def __init__(self, fast_period: int = 10, slow_period: int = 30, **kwargs: object) -> None:
-        super().__init__(fast_period=fast_period, slow_period=slow_period, **kwargs)
-        self.fast_period = fast_period
-        self.slow_period = slow_period
+    fast_period = param(10)
+    slow_period = param(30)
 
     def preprocess(self, df: pl.DataFrame) -> pl.DataFrame:
         return df.with_columns(

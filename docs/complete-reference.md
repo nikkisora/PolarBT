@@ -57,7 +57,14 @@ class Strategy(ABC):
     def on_finish(self, portfolio: Portfolio) -> None         # optional hook
 ```
 
-- `self.params` — dict of all `**params` passed to `__init__`
+- Declare parameters as class attributes using `param()`:
+  ```python
+  class MyStrategy(Strategy):
+      fast = param(10)
+      slow = param(30)
+  ```
+- Access them as `self.fast`, `self.slow` — they read from `self.params` with the declared default
+- `self.params` — dict of all `**params` passed to `__init__` (also accessible directly)
 - Strategy parameters are passed as keyword arguments: `MyStrategy(fast=10, slow=30)`
 - `preprocess()` must return a DataFrame with the same rows, plus any added indicator columns
 - `next()` is called every bar after warmup; use `ctx.portfolio` to place orders
@@ -605,10 +612,8 @@ df.with_columns(ta.rsi("close", 14).alias("ta_rsi"))
 
 ```python
 class MyStrategy(Strategy):
-    def __init__(self, fast: int = 10, slow: int = 30, **kwargs: Any) -> None:
-        super().__init__(fast=fast, slow=slow, **kwargs)
-        self.fast = fast
-        self.slow = slow
+    fast = param(10)
+    slow = param(30)
 
     def preprocess(self, df: pl.DataFrame) -> pl.DataFrame:
         return df.with_columns(

@@ -12,7 +12,7 @@ import math
 
 import polars as pl
 
-from polarbt import Strategy, backtest
+from polarbt import Strategy, backtest, param
 from polarbt import indicators as ind
 from polarbt.core import BacktestContext
 
@@ -36,14 +36,14 @@ eth_data = pl.DataFrame(
 
 # Define a momentum-based portfolio strategy
 class MomentumPortfolio(Strategy):
+    lookback = param(20)
+
     def preprocess(self, df: pl.DataFrame) -> pl.DataFrame:
         """Calculate momentum indicators for all assets"""
-        lookback = self.params.get("lookback", 20)
-
         return df.with_columns(
             [
-                ind.returns("BTC_close", lookback).alias("btc_momentum"),
-                ind.returns("ETH_close", lookback).alias("eth_momentum"),
+                ind.returns("BTC_close", self.lookback).alias("btc_momentum"),
+                ind.returns("ETH_close", self.lookback).alias("eth_momentum"),
             ]
         )
 

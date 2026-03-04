@@ -10,21 +10,21 @@ This script shows how to use:
 import polars as pl
 
 from polarbt import indicators as ind
-from polarbt.core import BacktestContext, Strategy
+from polarbt.core import BacktestContext, Strategy, param
 from polarbt.runner import backtest
 
 
 class SimpleStrategy(Strategy):
     """Simple SMA crossover strategy for testing commission impact."""
 
-    def preprocess(self, df: pl.DataFrame) -> pl.DataFrame:
-        fast = self.params.get("fast", 10)
-        slow = self.params.get("slow", 20)
+    fast = param(10)
+    slow = param(20)
 
+    def preprocess(self, df: pl.DataFrame) -> pl.DataFrame:
         return df.with_columns(
             [
-                ind.sma("close", fast).alias("sma_fast"),
-                ind.sma("close", slow).alias("sma_slow"),
+                ind.sma("close", self.fast).alias("sma_fast"),
+                ind.sma("close", self.slow).alias("sma_slow"),
             ]
         )
 

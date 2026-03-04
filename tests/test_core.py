@@ -4,7 +4,7 @@ import polars as pl
 import pytest
 
 from polarbt import indicators as ind
-from polarbt.core import BacktestContext, Engine, Portfolio, Strategy, standardize_dataframe
+from polarbt.core import BacktestContext, Engine, Portfolio, Strategy, param, standardize_dataframe
 
 
 @pytest.fixture
@@ -379,3 +379,123 @@ class TestStandardizeDataframe:
         assert "open" in engine.data.columns
         assert "close" in engine.data.columns
         assert "timestamp" in engine.data.columns
+
+
+class TestParam:
+    """Test param() descriptor for strategy parameters."""
+
+    def test_default_value(self):
+        """param() returns default when no kwarg is provided."""
+
+        class S(Strategy):
+            period = param(10)
+
+            def preprocess(self, df):
+                return df
+
+            def next(self, ctx):
+                pass
+
+        s = S()
+        assert s.period == 10
+
+    def test_kwarg_overrides_default(self):
+        """Keyword argument overrides the declared default."""
+
+        class S(Strategy):
+            period = param(10)
+
+            def preprocess(self, df):
+                return df
+
+            def next(self, ctx):
+                pass
+
+        s = S(period=42)
+        assert s.period == 42
+
+    def test_set_updates_params(self):
+        """Setting a param attribute writes to self.params."""
+
+        class S(Strategy):
+            period = param(10)
+
+            def preprocess(self, df):
+                return df
+
+            def next(self, ctx):
+                pass
+
+        s = S()
+        s.period = 99
+        assert s.params["period"] == 99
+        assert s.period == 99
+
+    def test_params_dict_still_works(self):
+        """self.params.get() pattern still works alongside param()."""
+
+        class S(Strategy):
+            fast = param(5)
+
+            def preprocess(self, df):
+                return df
+
+            def next(self, ctx):
+                pass
+
+        s = S(fast=15)
+        assert s.params.get("fast", 5) == 15
+        assert s.fast == 15
+
+    def test_class_access_returns_descriptor(self):
+        """Accessing param on the class returns the Param descriptor."""
+
+        class S(Strategy):
+            period = param(10)
+
+            def preprocess(self, df):
+                return df
+
+            def next(self, ctx):
+                pass
+
+        from polarbt.core import Param
+
+        assert isinstance(S.period, Param)
+
+    def test_multiple_params(self):
+        """Multiple param() declarations work independently."""
+
+        class S(Strategy):
+            fast = param(5)
+            slow = param(20)
+
+            def preprocess(self, df):
+                return df
+
+            def next(self, ctx):
+                pass
+
+        s = S(fast=10)
+        assert s.fast == 10
+        assert s.slow == 20
+
+    def test_param_in_backtest(self, sample_data):
+        """Strategy using param() works end-to-end with backtest."""
+
+        class ParamStrategy(Strategy):
+            sma_period = param(10)
+
+            def preprocess(self, df):
+                return df.with_columns([ind.sma("close", self.sma_period).alias("sma")])
+
+            def next(self, ctx):
+                if ctx.row["close"] > ctx.row["sma"]:
+                    ctx.portfolio.order_target_percent("asset", 1.0)
+                else:
+                    ctx.portfolio.close_position("asset")
+
+        engine = Engine(ParamStrategy(sma_period=10), sample_data, initial_cash=100_000)
+        results = engine.run()
+        assert results is not None
+        assert results.total_return is not None
