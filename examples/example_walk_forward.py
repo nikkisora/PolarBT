@@ -157,7 +157,8 @@ if __name__ == "__main__":
         verbose=False,
     )
 
-    print(f"Best In-Sample Params:  {best_is['params']}")
+    best_is_params = {k: best_is[k] for k in param_grid}
+    print(f"Best In-Sample Params:  {best_is_params}")
     print(f"In-Sample Sharpe:       {best_is['sharpe_ratio']:.3f}")
     print(f"In-Sample Return:       {best_is['total_return']:.2%}")
 

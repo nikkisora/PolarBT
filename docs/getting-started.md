@@ -81,14 +81,14 @@ results = backtest(
 ### Interpret Results
 
 ```python
-print(f"Total Return:  {results['total_return']:.2%}")
-print(f"Sharpe Ratio:  {results['sharpe_ratio']:.2f}")
-print(f"Max Drawdown:  {results['max_drawdown']:.2%}")
-print(f"Win Rate:      {results['win_rate']:.1f}%")
-print(f"Final Equity:  ${results['final_equity']:,.2f}")
+print(f"Total Return:  {results.total_return:.2%}")
+print(f"Sharpe Ratio:  {results.sharpe_ratio:.2f}")
+print(f"Max Drawdown:  {results.max_drawdown:.2%}")
+print(f"Win Rate:      {results.win_rate:.1f}%")
+print(f"Final Equity:  ${results.final_equity:,.2f}")
 ```
 
-The `results` dict contains all metrics from `calculate_metrics()` plus trade-level stats.
+The `results` object is a `BacktestMetrics` dataclass with all metrics from `calculate_metrics()` plus trade-level stats.
 
 ## Adding Risk Management
 
@@ -132,7 +132,7 @@ engine = Engine(
 results = engine.run()
 
 # Access trades
-trades_df = results["trades"]
+trades_df = results.trades
 print(trades_df)
 ```
 

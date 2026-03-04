@@ -213,7 +213,7 @@ if __name__ == "__main__":
     )
 
     print("\n  Best parameters:")
-    best_params = best["params"]
+    best_params = {k: best[k] for k in param_grid}
     for k, v in best_params.items():
         print(f"    {k}: {v}")
     print(f"  Sharpe Ratio:  {best['sharpe_ratio']:.3f}")

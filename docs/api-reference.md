@@ -64,7 +64,7 @@ Manages cash, positions, orders, and risk management.
 | `get_position(asset) -> float` | Current position quantity |
 | `get_value() -> float` | Total portfolio value |
 | `get_trades() -> pl.DataFrame` | Completed trades |
-| `get_trade_stats() -> dict` | Aggregate trade statistics |
+| `get_trade_stats() -> TradeStats` | Aggregate trade statistics |
 | `get_orders(status=None, asset=None)` | Filter orders |
 | `get_buying_power() -> float` | Available buying power (with leverage) |
 | `get_margin_used() -> float` | Current margin used |
@@ -96,7 +96,7 @@ Engine(
 
 | Method | Description |
 |---|---|
-| `run() -> dict` | Run backtest, return results dict |
+| `run() -> BacktestMetrics` | Run backtest, return typed results |
 
 ## Orders (`polarbt.orders`)
 
@@ -229,16 +229,30 @@ Returns: `total_return`, `cagr`, `sharpe_ratio`, `sortino_ratio`, `calmar_ratio`
 | `VolatilitySizer` | `VolatilitySizer(target_risk_percent)` |
 | `MaxPositionSizer` | `MaxPositionSizer(sizer, max_quantity, max_percent)` |
 
+## Results (`polarbt.results`)
+
+### `BacktestMetrics`
+
+Returned by `Engine.run()` and `backtest()`. All fields are typed for IDE autocompletion.
+
+Key fields: `total_return`, `cagr`, `sharpe_ratio`, `sortino_ratio`, `max_drawdown`, `calmar_ratio`, `volatility_annualized`, `final_equity`, `equity_peak`, `buy_hold_return`, `trade_stats` (`TradeStats`), `trades` (`pl.DataFrame`), `best_trade_pct`, `worst_trade_pct`, `expectancy`, `sqn`, `kelly_criterion`, `win_rate`, `ulcer_index`, `tail_ratio`.
+
+Optional fields (set by `backtest()`): `params`, `success`, `error`, `traceback`.
+
+### `TradeStats`
+
+Returned by `Portfolio.get_trade_stats()`. Fields: `total_trades`, `winning_trades`, `losing_trades`, `win_rate`, `avg_win`, `avg_loss`, `avg_pnl`, `profit_factor`, `total_pnl`.
+
 ## Runner (`polarbt.runner`)
 
-| Function | Description |
-|---|---|
-| `backtest(strategy_class, data, params, ...)` | Run single backtest |
-| `backtest_batch(strategy_class, data, param_sets, n_jobs, ...)` | Parallel batch execution |
-| `optimize(strategy_class, data, param_grid, objective, constraint, ...)` | Grid search optimization |
-| `optimize_multi(strategy_class, data, param_grid, objectives, ...)` | Multi-objective Pareto optimization |
-| `optimize_bayesian(strategy_class, data, param_space, objective, n_calls, ...)` | Bayesian optimization (requires scikit-optimize) |
-| `walk_forward_analysis(strategy_class, data, param_grid, train_periods, test_periods, ...)` | Walk-forward optimization |
+| Function | Returns | Description |
+|---|---|---|
+| `backtest(strategy_class, data, params, ...)` | `BacktestMetrics` | Run single backtest |
+| `backtest_batch(strategy_class, data, param_sets, n_jobs, ...)` | `pl.DataFrame` | Parallel batch execution |
+| `optimize(strategy_class, data, param_grid, objective, constraint, ...)` | `dict[str, Any]` | Grid search optimization |
+| `optimize_multi(strategy_class, data, param_grid, objectives, ...)` | `pl.DataFrame` | Multi-objective Pareto optimization |
+| `optimize_bayesian(strategy_class, data, param_space, objective, n_calls, ...)` | `BacktestMetrics` | Bayesian optimization (requires scikit-optimize) |
+| `walk_forward_analysis(strategy_class, data, param_grid, train_periods, test_periods, ...)` | `pl.DataFrame` | Walk-forward optimization |
 
 ## Visualization (`polarbt.plotting`)
 

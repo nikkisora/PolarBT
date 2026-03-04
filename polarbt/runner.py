@@ -966,11 +966,15 @@ def walk_forward_analysis(
             fractional_shares=fractional_shares,
         )
 
+        # Extract the optimized parameter values from the flat result row
+        param_keys = list(param_grid.keys())
+        best_param_values = {k: best_params[k] for k in param_keys}
+
         # Test on out-of-sample data
         test_result = backtest(
             strategy_class=strategy_class,
             data=test_data,
-            params=best_params["params"],
+            params=best_param_values,
             initial_cash=initial_cash,
             commission=commission,
             slippage=slippage,
@@ -999,7 +1003,7 @@ def walk_forward_analysis(
                 "train_end": train_end,
                 "test_start": test_start,
                 "test_end": test_end,
-                "best_params": best_params["params"],
+                "best_params": best_param_values,
                 "train_objective": train_obj_val,
                 "test_objective": test_obj_val,
                 **{f"test_{k}": v for k, v in test_scalars.items() if k not in ["params", "final_positions"]},
