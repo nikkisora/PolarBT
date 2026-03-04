@@ -11,6 +11,8 @@ from uuid import uuid4
 
 import polars as pl
 
+from polarbt.results import TradeStats
+
 
 @dataclass
 class Trade:
@@ -427,25 +429,14 @@ class TradeTracker:
 
         return pl.DataFrame(trade_dicts)
 
-    def get_trade_stats(self) -> dict[str, float]:
-        """
-        Calculate aggregate trade statistics.
+    def get_trade_stats(self) -> TradeStats:
+        """Calculate aggregate trade statistics.
 
         Returns:
-            Dictionary with win_rate, avg_win, avg_loss, profit_factor, etc.
+            TradeStats with win_rate, avg_win, avg_loss, profit_factor, etc.
         """
         if not self.trades:
-            return {
-                "total_trades": 0,
-                "winning_trades": 0,
-                "losing_trades": 0,
-                "win_rate": 0.0,
-                "avg_win": 0.0,
-                "avg_loss": 0.0,
-                "avg_pnl": 0.0,
-                "profit_factor": 0.0,
-                "total_pnl": 0.0,
-            }
+            return TradeStats()
 
         winners = [t for t in self.trades if t.is_winner()]
         losers = [t for t in self.trades if t.is_loser()]
@@ -453,14 +444,14 @@ class TradeTracker:
         total_wins = sum(t.pnl for t in winners)
         total_losses = abs(sum(t.pnl for t in losers))
 
-        return {
-            "total_trades": len(self.trades),
-            "winning_trades": len(winners),
-            "losing_trades": len(losers),
-            "win_rate": len(winners) / len(self.trades) * 100 if self.trades else 0.0,
-            "avg_win": total_wins / len(winners) if winners else 0.0,
-            "avg_loss": total_losses / len(losers) if losers else 0.0,
-            "avg_pnl": sum(t.pnl for t in self.trades) / len(self.trades),
-            "profit_factor": total_wins / total_losses if total_losses > 0 else float("inf"),
-            "total_pnl": sum(t.pnl for t in self.trades),
-        }
+        return TradeStats(
+            total_trades=len(self.trades),
+            winning_trades=len(winners),
+            losing_trades=len(losers),
+            win_rate=len(winners) / len(self.trades) * 100 if self.trades else 0.0,
+            avg_win=total_wins / len(winners) if winners else 0.0,
+            avg_loss=total_losses / len(losers) if losers else 0.0,
+            avg_pnl=sum(t.pnl for t in self.trades) / len(self.trades),
+            profit_factor=total_wins / total_losses if total_losses > 0 else float("inf"),
+            total_pnl=sum(t.pnl for t in self.trades),
+        )

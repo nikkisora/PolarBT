@@ -75,9 +75,9 @@ def main() -> None:
         initial_cash=100_000,
         commission=0.001,  # 0.1% per trade
     )
-    print(f"Final Equity: ${results1['final_equity']:,.2f}")
-    print(f"Total Return: {results1['total_return']:.2%}")
-    print(f"Sharpe Ratio: {results1['sharpe_ratio']:.2f}")
+    print(f"Final Equity: ${results1.final_equity:,.2f}")
+    print(f"Total Return: {results1.total_return:.2%}")
+    print(f"Sharpe Ratio: {results1.sharpe_ratio:.2f}")
     print()
 
     # Test 2: Fixed commission only
@@ -90,9 +90,9 @@ def main() -> None:
         initial_cash=100_000,
         commission=(5.0, 0.0),  # $5 fixed, 0% percentage
     )
-    print(f"Final Equity: ${results2['final_equity']:,.2f}")
-    print(f"Total Return: {results2['total_return']:.2%}")
-    print(f"Sharpe Ratio: {results2['sharpe_ratio']:.2f}")
+    print(f"Final Equity: ${results2.final_equity:,.2f}")
+    print(f"Total Return: {results2.total_return:.2%}")
+    print(f"Sharpe Ratio: {results2.sharpe_ratio:.2f}")
     print()
 
     # Test 3: Mixed fixed + percentage commission
@@ -105,9 +105,9 @@ def main() -> None:
         initial_cash=100_000,
         commission=(5.0, 0.001),  # $5 fixed + 0.1%
     )
-    print(f"Final Equity: ${results3['final_equity']:,.2f}")
-    print(f"Total Return: {results3['total_return']:.2%}")
-    print(f"Sharpe Ratio: {results3['sharpe_ratio']:.2f}")
+    print(f"Final Equity: ${results3.final_equity:,.2f}")
+    print(f"Total Return: {results3.total_return:.2%}")
+    print(f"Sharpe Ratio: {results3.sharpe_ratio:.2f}")
     print()
 
     # Test 4: Commission-free (for comparison)
@@ -120,9 +120,9 @@ def main() -> None:
         initial_cash=100_000,
         commission=0.0,  # No commission
     )
-    print(f"Final Equity: ${results4['final_equity']:,.2f}")
-    print(f"Total Return: {results4['total_return']:.2%}")
-    print(f"Sharpe Ratio: {results4['sharpe_ratio']:.2f}")
+    print(f"Final Equity: ${results4.final_equity:,.2f}")
+    print(f"Total Return: {results4.total_return:.2%}")
+    print(f"Sharpe Ratio: {results4.sharpe_ratio:.2f}")
     print()
 
     # Summary comparison
@@ -131,17 +131,17 @@ def main() -> None:
     print("=" * 80)
     print(f"{'Commission Model':<30} {'Final Equity':<15} {'Total Return':<15}")
     print("-" * 80)
-    print(f"{'Commission-Free':<30} ${results4['final_equity']:>13,.2f} {results4['total_return']:>13.2%}")
-    print(f"{'0.1% Percentage':<30} ${results1['final_equity']:>13,.2f} {results1['total_return']:>13.2%}")
-    print(f"{'$5 Fixed':<30} ${results2['final_equity']:>13,.2f} {results2['total_return']:>13.2%}")
-    print(f"{'$5 + 0.1% Mixed':<30} ${results3['final_equity']:>13,.2f} {results3['total_return']:>13.2%}")
+    print(f"{'Commission-Free':<30} ${results4.final_equity:>13,.2f} {results4.total_return:>13.2%}")
+    print(f"{'0.1% Percentage':<30} ${results1.final_equity:>13,.2f} {results1.total_return:>13.2%}")
+    print(f"{'$5 Fixed':<30} ${results2.final_equity:>13,.2f} {results2.total_return:>13.2%}")
+    print(f"{'$5 + 0.1% Mixed':<30} ${results3.final_equity:>13,.2f} {results3.total_return:>13.2%}")
     print()
 
     # Calculate commission impact
     print("Commission Impact (compared to commission-free):")
-    print(f"  0.1% Percentage: {(results1['total_return'] - results4['total_return']):.2%}")
-    print(f"  $5 Fixed:        {(results2['total_return'] - results4['total_return']):.2%}")
-    print(f"  $5 + 0.1% Mixed: {(results3['total_return'] - results4['total_return']):.2%}")
+    print(f"  0.1% Percentage: {(results1.total_return - results4.total_return):.2%}")
+    print(f"  $5 Fixed:        {(results2.total_return - results4.total_return):.2%}")
+    print(f"  $5 + 0.1% Mixed: {(results3.total_return - results4.total_return):.2%}")
     print()
 
 

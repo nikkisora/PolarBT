@@ -254,9 +254,9 @@ class TestEngine:
         results = engine.run()
 
         assert results is not None
-        assert "final_equity" in results
-        assert "sharpe_ratio" in results
-        assert "total_return" in results
+        assert results.final_equity is not None
+        assert results.sharpe_ratio is not None
+        assert results.total_return is not None
         assert engine.portfolio is not None
 
     def test_engine_with_uptrend(self):
@@ -275,7 +275,7 @@ class TestEngine:
         results = engine.run()
 
         # Should make profit in uptrend (enough bars left to trade)
-        assert results["total_return"] > 0
+        assert results.total_return > 0
 
     def test_multiple_assets(self):
         """Test engine with multiple assets."""
@@ -301,7 +301,7 @@ class TestEngine:
         results = engine.run()
 
         assert results is not None
-        assert "BTC" in results["final_positions"] or "ETH" in results["final_positions"]
+        assert "BTC" in results.final_positions or "ETH" in results.final_positions
 
 
 class TestBacktestContext:

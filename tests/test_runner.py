@@ -47,10 +47,10 @@ class TestBacktest:
         results = backtest(SampleStrategy, sample_data, params={"sma_period": 10}, initial_cash=100_000)
 
         assert results is not None
-        assert "sharpe_ratio" in results
-        assert "total_return" in results
-        assert "final_equity" in results
-        assert results["success"]
+        assert results.sharpe_ratio is not None
+        assert results.total_return is not None
+        assert results.final_equity is not None
+        assert results.success
 
     def test_backtest_different_params(self, sample_data):
         """Test backtest with different parameters."""
@@ -58,15 +58,13 @@ class TestBacktest:
         results2 = backtest(SampleStrategy, sample_data, params={"sma_period": 20})
 
         # Results should be different
-        assert (
-            results1["sharpe_ratio"] != results2["sharpe_ratio"] or results1["total_return"] != results2["total_return"]
-        )
+        assert results1.sharpe_ratio != results2.sharpe_ratio or results1.total_return != results2.total_return
 
     def test_backtest_no_params(self, sample_data):
         """Test backtest without parameters."""
         results = backtest(SampleStrategy, sample_data)
         assert results is not None
-        assert results["success"]
+        assert results.success
 
 
 class TestBatchBacktest:
@@ -194,8 +192,8 @@ class TestSequentialFallback:
         batch_df = backtest_batch(SampleStrategy, sample_data, [params], n_jobs=1, verbose=False)
 
         batch_row = batch_df.to_dicts()[0]
-        assert abs(single["sharpe_ratio"] - batch_row["sharpe_ratio"]) < 1e-10
-        assert abs(single["total_return"] - batch_row["total_return"]) < 1e-10
+        assert abs(single.sharpe_ratio - batch_row["sharpe_ratio"]) < 1e-10
+        assert abs(single.total_return - batch_row["total_return"]) < 1e-10
 
     def test_optimize_njobs_1(self, sample_data):
         """optimize() with n_jobs=1 should work without multiprocessing."""

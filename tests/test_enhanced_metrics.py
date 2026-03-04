@@ -15,6 +15,7 @@ from polarbt.metrics import (
     trade_level_metrics,
     ulcer_index,
 )
+from polarbt.results import BacktestMetrics, TradeStats
 from polarbt.trades import Trade
 
 
@@ -269,8 +270,8 @@ class TestCalculateMetricsEnhanced:
 
 
 class TestFormatResults:
-    def _make_results(self) -> dict:
-        """Create a minimal results dict similar to backtest() output."""
+    def _make_results(self) -> BacktestMetrics:
+        """Create a minimal BacktestMetrics similar to backtest() output."""
         trades_df = pl.DataFrame(
             {
                 "return_pct": [0.05, -0.02, 0.08, -0.01, 0.03],
@@ -278,36 +279,36 @@ class TestFormatResults:
                 "bars_held": [10, 5, 20, 3, 15],
             }
         )
-        return {
-            "final_equity": 110_000.0,
-            "equity_peak": 115_000.0,
-            "initial_equity": 100_000.0,
-            "total_return": 0.10,
-            "buy_hold_return": 0.15,
-            "return_annualized": 0.12,
-            "cagr": 0.12,
-            "volatility_annualized": 0.20,
-            "sharpe_ratio": 1.5,
-            "sortino_ratio": 2.1,
-            "calmar_ratio": 0.8,
-            "max_drawdown": 0.15,
-            "avg_drawdown_duration": 5.0,
-            "max_drawdown_duration": 12.0,
-            "best_trade_pct": 8.0,
-            "worst_trade_pct": -2.0,
-            "avg_trade_pct": 2.6,
-            "max_trade_duration": 20.0,
-            "avg_trade_duration": 10.6,
-            "expectancy": 260.0,
-            "sqn": 2.87,
-            "kelly_criterion": 0.4333,
-            "trades": trades_df,
-            "trade_stats": {
-                "total_trades": 5,
-                "win_rate": 60.0,
-                "profit_factor": 2.67,
-            },
-        }
+        return BacktestMetrics(
+            final_equity=110_000.0,
+            equity_peak=115_000.0,
+            initial_equity=100_000.0,
+            total_return=0.10,
+            buy_hold_return=0.15,
+            return_annualized=0.12,
+            cagr=0.12,
+            volatility_annualized=0.20,
+            sharpe_ratio=1.5,
+            sortino_ratio=2.1,
+            calmar_ratio=0.8,
+            max_drawdown=0.15,
+            avg_drawdown_duration=5.0,
+            max_drawdown_duration=12.0,
+            best_trade_pct=8.0,
+            worst_trade_pct=-2.0,
+            avg_trade_pct=2.6,
+            max_trade_duration=20.0,
+            avg_trade_duration=10.6,
+            expectancy=260.0,
+            sqn=2.87,
+            kelly_criterion=0.4333,
+            trades=trades_df,
+            trade_stats=TradeStats(
+                total_trades=5,
+                win_rate=60.0,
+                profit_factor=2.67,
+            ),
+        )
 
     def test_contains_key_labels(self) -> None:
         output = format_results(self._make_results())
@@ -330,14 +331,14 @@ class TestFormatResults:
 
     def test_empty_trades(self) -> None:
         results = self._make_results()
-        results["trades"] = pl.DataFrame(schema={"return_pct": pl.Float64, "pnl": pl.Float64, "bars_held": pl.Int64})
-        results["trade_stats"] = {"total_trades": 0, "win_rate": 0.0, "profit_factor": 0.0}
+        results.trades = pl.DataFrame(schema={"return_pct": pl.Float64, "pnl": pl.Float64, "bars_held": pl.Int64})
+        results.trade_stats = TradeStats(total_trades=0, win_rate=0.0, profit_factor=0.0)
         output = format_results(results)
         assert "# Trades" in output
 
     def test_no_trades_key(self) -> None:
         results = self._make_results()
-        del results["trades"]
+        results.trades = pl.DataFrame()
         output = format_results(results)
         assert "# Trades" in output
 

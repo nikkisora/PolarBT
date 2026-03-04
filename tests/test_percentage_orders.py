@@ -219,7 +219,7 @@ class TestPercentOrdersEngine:
         results = engine.run()
         assert engine.portfolio is not None
         assert engine.portfolio.get_position("asset") > 0
-        assert results["final_equity"] > 0
+        assert results.final_equity > 0
 
     def test_whole_shares_100_percent_in_backtest(self):
         """Full backtest with 100% and whole shares."""
@@ -246,4 +246,4 @@ class TestPercentOrdersEngine:
         position = engine.portfolio.get_position("asset")
         assert position == int(position)  # Whole number
         assert position > 0
-        assert results["final_equity"] > 0
+        assert results.final_equity > 0

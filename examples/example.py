@@ -60,11 +60,11 @@ if __name__ == "__main__":
     )
 
     print("\nBacktest Results:")
-    print(f"  Total Return:    {results['total_return']:.2%}")
-    print(f"  Sharpe Ratio:    {results['sharpe_ratio']:.2f}")
-    print(f"  Max Drawdown:    {results['max_drawdown']:.2%}")
-    print(f"  Final Equity:    ${results['final_equity']:,.2f}")
-    print(f"  Trades:          {results['trade_stats']['total_trades']}")
+    print(f"  Total Return:    {results.total_return:.2%}")
+    print(f"  Sharpe Ratio:    {results.sharpe_ratio:.2f}")
+    print(f"  Max Drawdown:    {results.max_drawdown:.2%}")
+    print(f"  Final Equity:    ${results.final_equity:,.2f}")
+    print(f"  Trades:          {results.trade_stats.total_trades}")
 
     print("\n" + "=" * 50)
     print("Example completed successfully!")

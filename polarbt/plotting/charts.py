@@ -674,7 +674,7 @@ def _format_duration(timestamps: list[Any], start_idx: int, end_idx: int, bar_co
 
 def _get_filtered_trades(engine: Any, asset: str) -> pl.DataFrame | None:
     """Get trades DataFrame filtered for the target asset."""
-    trades_df: pl.DataFrame | None = engine.results.get("trades")
+    trades_df: pl.DataFrame | None = engine.results.trades if engine.results is not None else None
     if trades_df is None or len(trades_df) == 0:
         return None
 

@@ -204,7 +204,7 @@ class TestEngineCommissionModel:
             warmup=0,
         )
         results = engine.run()
-        assert results["final_equity"] > 0
+        assert results.final_equity > 0
 
         # Commission should be taker rate: 10 * 100 * 0.001 = 1.0
         assert engine.portfolio is not None

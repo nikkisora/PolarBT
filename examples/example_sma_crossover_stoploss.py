@@ -128,19 +128,17 @@ if __name__ == "__main__":
     )
     results = engine.run()
 
-    print(f"Total Return:    {results['total_return']:+.2%}")
-    print(f"Sharpe Ratio:    {results['sharpe_ratio']:.3f}")
-    print(f"Max Drawdown:    {results['max_drawdown']:.2%}")
-    print(f"Calmar Ratio:    {results['calmar_ratio']:.3f}")
+    print(f"Total Return:    {results.total_return:+.2%}")
+    print(f"Sharpe Ratio:    {results.sharpe_ratio:.3f}")
+    print(f"Max Drawdown:    {results.max_drawdown:.2%}")
+    print(f"Calmar Ratio:    {results.calmar_ratio:.3f}")
 
-    trade_stats = results["trade_stats"]
-    print(
-        f"Trades:          {trade_stats['total_trades']} ({trade_stats['winning_trades']}W / {trade_stats['losing_trades']}L)"
-    )
-    print(f"Win Rate:        {trade_stats['win_rate']:.1f}%")
-    print(f"Profit Factor:   {trade_stats['profit_factor']:.2f}")
+    trade_stats = results.trade_stats
+    print(f"Trades:          {trade_stats.total_trades} ({trade_stats.winning_trades}W / {trade_stats.losing_trades}L)")
+    print(f"Win Rate:        {trade_stats.win_rate:.1f}%")
+    print(f"Profit Factor:   {trade_stats.profit_factor:.2f}")
 
-    trades_df = results["trades"]
+    trades_df = results.trades
     if len(trades_df) > 0:
         print("\nTrades:")
         for row in trades_df.iter_rows(named=True):

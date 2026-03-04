@@ -287,18 +287,15 @@ if __name__ == "__main__":
     )
     results = engine.run()
 
-    trade_stats = results["trade_stats"]
-    print(f"  Total Return:  {results['total_return']:+.2%}")
-    print(f"  Sharpe Ratio:  {results['sharpe_ratio']:.3f}")
-    print(f"  Sortino Ratio: {results['sortino_ratio']:.3f}")
-    print(f"  Max Drawdown:  {results['max_drawdown']:.2%}")
-    print(f"  Calmar Ratio:  {results['calmar_ratio']:.3f}")
-    print(
-        f"  Trades:        {trade_stats['total_trades']}"
-        f" ({trade_stats['winning_trades']}W / {trade_stats['losing_trades']}L)"
-    )
-    print(f"  Win Rate:      {trade_stats['win_rate']:.1f}%")
-    print(f"  Profit Factor: {trade_stats['profit_factor']:.2f}")
+    trade_stats = results.trade_stats
+    print(f"  Total Return:  {results.total_return:+.2%}")
+    print(f"  Sharpe Ratio:  {results.sharpe_ratio:.3f}")
+    print(f"  Sortino Ratio: {results.sortino_ratio:.3f}")
+    print(f"  Max Drawdown:  {results.max_drawdown:.2%}")
+    print(f"  Calmar Ratio:  {results.calmar_ratio:.3f}")
+    print(f"  Trades:        {trade_stats.total_trades} ({trade_stats.winning_trades}W / {trade_stats.losing_trades}L)")
+    print(f"  Win Rate:      {trade_stats.win_rate:.1f}%")
+    print(f"  Profit Factor: {trade_stats.profit_factor:.2f}")
 
     fig_bt = plot_backtest(
         engine,
@@ -356,7 +353,7 @@ if __name__ == "__main__":
     perm = permutation_test(
         RSIBollingerStrategy,
         data,
-        original_metric=results["sharpe_ratio"],
+        original_metric=results.sharpe_ratio,
         metric="sharpe_ratio",
         n_permutations=50,
         seed=42,
@@ -394,7 +391,7 @@ if __name__ == "__main__":
     print("  Strategy:       RSI-Bollinger Mean Reversion")
     print(f"  TA-Lib Used:    {'Yes' if USE_TALIB else 'No (built-in indicators)'}")
     print(f"  Best Params:    {best_params}")
-    print(f"  Sharpe Ratio:   {results['sharpe_ratio']:.3f}")
+    print(f"  Sharpe Ratio:   {results.sharpe_ratio:.3f}")
     print(f"  p-value:        {perm.p_value:.4f}")
     if len(trades) >= 2:
         print(f"  MC 95% CI:      ${ci_equity[0]:,.0f} — ${ci_equity[1]:,.0f}")

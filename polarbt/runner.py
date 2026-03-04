@@ -18,22 +18,22 @@ import polars as pl
 
 from polarbt.commissions import CommissionModel
 from polarbt.core import Engine, Strategy
+from polarbt.results import BacktestMetrics
 
 
 @dataclass
 class BacktestResult:
-    """
-    Container for backtest results.
+    """Container for parallel backtest execution results.
 
     Attributes:
-        params: Strategy parameters used
-        metrics: Performance metrics dictionary
-        success: Whether backtest completed successfully
-        error: Error message if backtest failed
+        params: Strategy parameters used.
+        metrics: Performance metrics.
+        success: Whether backtest completed successfully.
+        error: Error message if backtest failed.
     """
 
     params: dict[str, Any]
-    metrics: dict[str, Any]
+    metrics: BacktestMetrics
     success: bool = True
     error: str | None = None
 
@@ -57,9 +57,8 @@ def backtest(
     leverage: float = 1.0,
     maintenance_margin: float | None = None,
     fractional_shares: bool = True,
-) -> dict[str, Any]:
-    """
-    Run a single backtest.
+) -> BacktestMetrics:
+    """Run a single backtest.
 
     This is the main entry point for backtesting a strategy with given parameters.
     Designed for easy integration with LLM-driven optimization.
@@ -86,34 +85,23 @@ def backtest(
         maintenance_margin: Minimum margin ratio before margin call (default None)
 
     Returns:
-        Dictionary containing backtest results and metrics
+        BacktestMetrics with all performance metrics and trade data.
 
     Example:
-        # Single asset with auto warmup (default)
         results = backtest(
             MyStrategy,
             data,
             params={"sma_period": 20, "rsi_period": 14},
             initial_cash=100000
         )
-
-        # Multi-asset with manual warmup
-        results = backtest(
-            MyStrategy,
-            {"BTC": btc_df, "ETH": eth_df},
-            params={"fast": 10, "slow": 20},
-            warmup=20  # or warmup="auto" (default)
-        )
-        print(f"Sharpe Ratio: {results['sharpe_ratio']}")
+        print(f"Sharpe Ratio: {results.sharpe_ratio}")
     """
     if params is None:
         params = {}
 
     try:
-        # Instantiate strategy with parameters
         strategy = strategy_class(**params)
 
-        # Create and run engine
         engine = Engine(
             strategy=strategy,
             data=data,
@@ -135,22 +123,22 @@ def backtest(
         )
 
         results = engine.run()
-        results["params"] = params
-        results["success"] = True
+        results.params = params
+        results.success = True
 
         return results
 
     except Exception as e:
-        import traceback
+        import traceback as tb
 
-        return {
-            "params": params,
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc(),
-            "sharpe_ratio": -999.0,  # Penalty for failed backtests
-            "total_return": -1.0,
-        }
+        return BacktestMetrics(
+            params=params,
+            success=False,
+            error=str(e),
+            traceback=tb.format_exc(),
+            sharpe_ratio=-999.0,
+            total_return=-1.0,
+        )
 
 
 def _run_backtest_worker(
@@ -233,13 +221,13 @@ def _run_backtest_worker(
         return BacktestResult(
             params=params,
             metrics=results,
-            success=True,
+            success=results.success is not False,
         )
 
     except Exception as e:
         return BacktestResult(
             params=params,
-            metrics={},
+            metrics=BacktestMetrics(),
             success=False,
             error=str(e),
         )
@@ -368,9 +356,9 @@ def backtest_batch(
     # Convert results to DataFrame
     rows = []
     for result in results:
-        row = {**result.params}
+        row: dict[str, Any] = {**result.params}
         if result.success:
-            row.update(result.metrics)
+            row.update(result.metrics.to_scalar_dict())
         else:
             row["error"] = result.error
             row["success"] = False
@@ -734,7 +722,7 @@ def optimize_bayesian(
     leverage: float = 1.0,
     maintenance_margin: float | None = None,
     fractional_shares: bool = True,
-) -> dict[str, Any]:
+) -> BacktestMetrics:
     """Bayesian optimization for strategy parameters using scikit-optimize.
 
     Requires scikit-optimize: ``pip install scikit-optimize``
@@ -769,7 +757,7 @@ def optimize_bayesian(
         maintenance_margin: Maintenance margin ratio.
 
     Returns:
-        Dictionary with best parameters and results, plus ``all_results`` DataFrame.
+        BacktestMetrics for the best parameters, with ``all_results_df`` populated.
 
     Example:
         >>> best = optimize_bayesian(
@@ -813,7 +801,7 @@ def optimize_bayesian(
         fractional_shares,
     )
 
-    all_results: list[dict[str, Any]] = []
+    all_results: list[BacktestMetrics] = []
 
     def objective_func(x: list[Any]) -> float:
         params = dict(zip(keys, x, strict=True))
@@ -829,7 +817,7 @@ def optimize_bayesian(
         )
         all_results.append(result)
 
-        val = result.get(objective, -999.0 if maximize else 999.0)
+        val = getattr(result, objective, -999.0 if maximize else 999.0)
         if not isinstance(val, (int, float)):
             val = -999.0 if maximize else 999.0
 
@@ -852,7 +840,9 @@ def optimize_bayesian(
         params=best_params,
         **engine_kwargs,
     )
-    best_result["all_results"] = pl.DataFrame(all_results) if all_results else pl.DataFrame()
+    best_result.all_results_df = (
+        pl.DataFrame([r.to_scalar_dict() for r in all_results]) if all_results else pl.DataFrame()
+    )
 
     return best_result
 
@@ -998,6 +988,10 @@ def walk_forward_analysis(
             fractional_shares=fractional_shares,
         )
 
+        test_scalars = test_result.to_scalar_dict()
+        train_obj_val = best_params.get(objective, 0.0)
+        test_obj_val = getattr(test_result, objective, 0.0)
+
         results.append(
             {
                 "fold": fold,
@@ -1006,15 +1000,15 @@ def walk_forward_analysis(
                 "test_start": test_start,
                 "test_end": test_end,
                 "best_params": best_params["params"],
-                "train_objective": best_params.get(objective, 0.0),
-                "test_objective": test_result.get(objective, 0.0),
-                **{f"test_{k}": v for k, v in test_result.items() if k not in ["params", "final_positions"]},
+                "train_objective": train_obj_val,
+                "test_objective": test_obj_val,
+                **{f"test_{k}": v for k, v in test_scalars.items() if k not in ["params", "final_positions"]},
             }
         )
 
         if verbose:
-            print(f"  Train {objective}: {best_params.get(objective, 0.0):.4f}")
-            print(f"  Test {objective}: {test_result.get(objective, 0.0):.4f}")
+            print(f"  Train {objective}: {train_obj_val:.4f}")
+            print(f"  Test {objective}: {test_obj_val:.4f}")
 
         # Move to next window
         start_idx += test_periods

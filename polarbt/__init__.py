@@ -36,6 +36,7 @@ from polarbt.core import (
 )
 from polarbt.metrics import format_results
 from polarbt.orders import Order, OrderStatus, OrderType
+from polarbt.results import BacktestMetrics, TradeStats
 from polarbt.runner import backtest, backtest_batch, optimize, optimize_bayesian, optimize_multi, walk_forward_analysis
 from polarbt.sizers import (
     FixedRiskSizer,
@@ -95,6 +96,8 @@ __all__ = [
     "MonteCarloResult",
     "LookAheadResult",
     "PermutationTestResult",
+    "BacktestMetrics",
+    "TradeStats",
     "format_results",
     "plotting",
 ]

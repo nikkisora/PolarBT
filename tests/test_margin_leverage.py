@@ -275,4 +275,4 @@ class TestRunnerIntegration:
             commission=0.0,
             slippage=0.0,
         )
-        assert results["success"] is True
+        assert results.success is True

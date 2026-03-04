@@ -324,8 +324,8 @@ class TestTradeTracker:
         tracker = TradeTracker()
         stats = tracker.get_trade_stats()
 
-        assert stats["total_trades"] == 0
-        assert stats["win_rate"] == 0.0
+        assert stats.total_trades == 0
+        assert stats.win_rate == 0.0
 
     def test_get_trade_stats(self):
         """Test trade stats calculation."""
@@ -341,13 +341,13 @@ class TestTradeTracker:
 
         stats = tracker.get_trade_stats()
 
-        assert stats["total_trades"] == 2
-        assert stats["winning_trades"] == 1
-        assert stats["losing_trades"] == 1
-        assert stats["win_rate"] == 50.0
-        assert stats["avg_win"] > 0
-        assert stats["avg_loss"] > 0
-        assert stats["profit_factor"] > 0
+        assert stats.total_trades == 2
+        assert stats.winning_trades == 1
+        assert stats.losing_trades == 1
+        assert stats.win_rate == 50.0
+        assert stats.avg_win > 0
+        assert stats.avg_loss > 0
+        assert stats.profit_factor > 0
 
     def test_position_reversal(self):
         """Test position reversal (long to short)."""

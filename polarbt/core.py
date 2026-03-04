@@ -20,6 +20,7 @@ import polars as pl
 
 from polarbt.commissions import CommissionModel, make_commission_model
 from polarbt.orders import Order, OrderStatus, OrderType
+from polarbt.results import BacktestMetrics, TradeStats, _backtest_metrics_from_dict
 from polarbt.trades import TradeTracker
 
 
@@ -2010,12 +2011,11 @@ class Portfolio:
         """
         return self.trade_tracker.get_trades_df()
 
-    def get_trade_stats(self) -> dict[str, float]:
-        """
-        Get aggregate trade statistics.
+    def get_trade_stats(self) -> TradeStats:
+        """Get aggregate trade statistics.
 
         Returns:
-            Dictionary with win_rate, avg_win, avg_loss, profit_factor, etc.
+            TradeStats with win_rate, avg_win, avg_loss, profit_factor, etc.
         """
         return self.trade_tracker.get_trade_stats()
 
@@ -2229,7 +2229,7 @@ class Engine:
                 self.price_columns = price_columns
 
         self.portfolio: Portfolio | None = None
-        self.results: dict[str, Any] | None = None
+        self.results: BacktestMetrics | None = None
         self.processed_data: pl.DataFrame | None = None
 
     def _calculate_auto_warmup(self, df: pl.DataFrame) -> int:
@@ -2270,12 +2270,11 @@ class Engine:
         # If no row has all non-null values, return length - 1 (skip all but last)
         return max(0, len(df) - 1)
 
-    def run(self) -> dict[str, Any]:
-        """
-        Run the backtest simulation.
+    def run(self) -> BacktestMetrics:
+        """Run the backtest simulation.
 
         Returns:
-            Dictionary containing backtest results and metrics
+            BacktestMetrics with all performance metrics and trade data.
         """
         # Initialize portfolio
         self.portfolio = Portfolio(
@@ -2388,17 +2387,16 @@ class Engine:
         self.results = self._calculate_results()
         return self.results
 
-    def _calculate_results(self) -> dict[str, Any]:
-        """
-        Calculate backtest metrics.
+    def _calculate_results(self) -> BacktestMetrics:
+        """Calculate backtest metrics.
 
         Returns:
-            Dictionary with performance metrics
+            BacktestMetrics with all performance data.
         """
         from polarbt.metrics import calculate_metrics
 
         if not self.portfolio:
-            return {}
+            return BacktestMetrics()
 
         # Create equity curve DataFrame
         equity_df = pl.DataFrame(
@@ -2409,21 +2407,20 @@ class Engine:
             strict=False,  # Allow mixed types
         )
 
-        # Calculate metrics
+        # Calculate base metrics (still a dict from calculate_metrics)
         metrics = calculate_metrics(equity_df, self.initial_cash)
 
-        # Add portfolio info
+        # Portfolio info
         metrics["final_equity"] = self.portfolio.get_value()
         metrics["equity_peak"] = float(equity_df["equity"].max()) if len(equity_df) > 0 else self.initial_cash  # type: ignore[arg-type]
         metrics["final_positions"] = dict(self.portfolio.positions)
         metrics["final_cash"] = self.portfolio.cash
 
-        # Add trade information
+        # Trade information
         trades_df = self.portfolio.get_trades()
         trade_stats = self.portfolio.get_trade_stats()
         metrics["trades"] = trades_df
-        metrics["trade_stats"] = trade_stats
-        metrics["win_rate"] = trade_stats["win_rate"]
+        metrics["win_rate"] = trade_stats.win_rate
 
         # Return (Ann.) — same as CAGR, kept as explicit alias
         metrics["return_annualized"] = metrics.get("cagr", 0.0)
@@ -2480,4 +2477,4 @@ class Engine:
             metrics["sqn"] = 0.0
             metrics["kelly_criterion"] = 0.0
 
-        return metrics
+        return _backtest_metrics_from_dict(metrics, trade_stats)

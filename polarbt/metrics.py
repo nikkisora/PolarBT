@@ -4,10 +4,15 @@ Performance metrics for backtesting results.
 All metrics are calculated using vectorized Polars operations for maximum performance.
 """
 
-from typing import Any
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import polars as pl
+
+if TYPE_CHECKING:
+    from polarbt.results import BacktestMetrics
 
 
 def calculate_metrics(equity_df: pl.DataFrame, initial_capital: float) -> dict[str, Any]:
@@ -539,14 +544,14 @@ def monthly_returns(equity_df: pl.DataFrame) -> pl.DataFrame:
     return monthly.select(["year", "month", "return"])
 
 
-def format_results(results: dict[str, Any], label_width: int = 30) -> str:
+def format_results(results: BacktestMetrics, label_width: int = 30) -> str:
     """Format backtest results as a human-readable summary string.
 
     Produces a clean, aligned table of key performance metrics similar to
     backtesting.py output style.
 
     Args:
-        results: Results dictionary returned by ``backtest()`` or ``Engine.run()``.
+        results: BacktestMetrics returned by ``backtest()`` or ``Engine.run()``.
         label_width: Column width for metric labels (default 30).
 
     Returns:
@@ -559,7 +564,8 @@ def format_results(results: dict[str, Any], label_width: int = 30) -> str:
         Return [%]                               68.94
         ...
     """
-    trade_stats = results.get("trade_stats", {})
+
+    ts = results.trade_stats
 
     def _fmt(label: str, value: object, fmt: str = "") -> str:
         """Format a single metric line."""
@@ -568,34 +574,34 @@ def format_results(results: dict[str, Any], label_width: int = 30) -> str:
 
     lines = [
         # --- Equity & Returns ---
-        _fmt("Equity Final [$]", results.get("final_equity", 0), ",.2f"),
-        _fmt("Equity Peak [$]", results.get("equity_peak", results.get("initial_equity", 0)), ",.2f"),
-        _fmt("Return [%]", results.get("total_return", 0) * 100, ".2f"),
-        _fmt("Buy & Hold Return [%]", results.get("buy_hold_return", 0) * 100, ".2f"),
-        _fmt("Return (Ann.) [%]", results.get("return_annualized", 0) * 100, ".2f"),
-        _fmt("CAGR [%]", results.get("cagr", 0) * 100, ".2f"),
-        _fmt("Volatility (Ann.) [%]", results.get("volatility_annualized", 0) * 100, ".2f"),
+        _fmt("Equity Final [$]", results.final_equity, ",.2f"),
+        _fmt("Equity Peak [$]", results.equity_peak or results.initial_equity, ",.2f"),
+        _fmt("Return [%]", results.total_return * 100, ".2f"),
+        _fmt("Buy & Hold Return [%]", results.buy_hold_return * 100, ".2f"),
+        _fmt("Return (Ann.) [%]", results.return_annualized * 100, ".2f"),
+        _fmt("CAGR [%]", results.cagr * 100, ".2f"),
+        _fmt("Volatility (Ann.) [%]", results.volatility_annualized * 100, ".2f"),
         "",
         # --- Risk Metrics ---
-        _fmt("Sharpe Ratio", results.get("sharpe_ratio", 0), ".2f"),
-        _fmt("Sortino Ratio", results.get("sortino_ratio", 0), ".2f"),
-        _fmt("Calmar Ratio", results.get("calmar_ratio", 0), ".2f"),
-        _fmt("Max. Drawdown [%]", results.get("max_drawdown", 0) * -100, ".2f"),
-        _fmt("Avg. Drawdown Duration [bars]", results.get("avg_drawdown_duration", 0), ".0f"),
-        _fmt("Max. Drawdown Duration [bars]", results.get("max_drawdown_duration", 0), ".0f"),
+        _fmt("Sharpe Ratio", results.sharpe_ratio, ".2f"),
+        _fmt("Sortino Ratio", results.sortino_ratio, ".2f"),
+        _fmt("Calmar Ratio", results.calmar_ratio, ".2f"),
+        _fmt("Max. Drawdown [%]", results.max_drawdown * -100, ".2f"),
+        _fmt("Avg. Drawdown Duration [bars]", results.avg_drawdown_duration, ".0f"),
+        _fmt("Max. Drawdown Duration [bars]", results.max_drawdown_duration, ".0f"),
         "",
         # --- Trade Statistics ---
-        _fmt("# Trades", trade_stats.get("total_trades", 0), "d"),
-        _fmt("Win Rate [%]", trade_stats.get("win_rate", 0), ".2f"),
-        _fmt("Best Trade [%]", results.get("best_trade_pct", 0), ".2f"),
-        _fmt("Worst Trade [%]", results.get("worst_trade_pct", 0), ".2f"),
-        _fmt("Avg. Trade [%]", results.get("avg_trade_pct", 0), ".2f"),
-        _fmt("Max. Trade Duration [bars]", results.get("max_trade_duration", 0), ".0f"),
-        _fmt("Avg. Trade Duration [bars]", results.get("avg_trade_duration", 0), ".0f"),
-        _fmt("Profit Factor", trade_stats.get("profit_factor", 0), ".2f"),
-        _fmt("Expectancy [$]", results.get("expectancy", 0), ".2f"),
-        _fmt("SQN", results.get("sqn", 0), ".2f"),
-        _fmt("Kelly Criterion", results.get("kelly_criterion", 0), ".4f"),
+        _fmt("# Trades", ts.total_trades, "d"),
+        _fmt("Win Rate [%]", ts.win_rate, ".2f"),
+        _fmt("Best Trade [%]", results.best_trade_pct, ".2f"),
+        _fmt("Worst Trade [%]", results.worst_trade_pct, ".2f"),
+        _fmt("Avg. Trade [%]", results.avg_trade_pct, ".2f"),
+        _fmt("Max. Trade Duration [bars]", results.max_trade_duration, ".0f"),
+        _fmt("Avg. Trade Duration [bars]", results.avg_trade_duration, ".0f"),
+        _fmt("Profit Factor", ts.profit_factor, ".2f"),
+        _fmt("Expectancy [$]", results.expectancy, ".2f"),
+        _fmt("SQN", results.sqn, ".2f"),
+        _fmt("Kelly Criterion", results.kelly_criterion, ".4f"),
     ]
 
     return "\n".join(lines)

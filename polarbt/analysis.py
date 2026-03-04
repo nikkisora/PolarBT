@@ -323,7 +323,7 @@ def permutation_test(
             order_delay=order_delay,
             **engine_kwargs,
         )
-        original_metric = float(orig_result.get(metric, 0.0))
+        original_metric = float(getattr(orig_result, metric, 0.0))
 
     rng = np.random.default_rng(seed)
     null_metrics: list[float] = []
@@ -353,7 +353,7 @@ def permutation_test(
                 order_delay=order_delay,
                 **engine_kwargs,
             )
-            null_metrics.append(float(result.get(metric, 0.0)))
+            null_metrics.append(float(getattr(result, metric, 0.0)))
         except Exception:
             null_metrics.append(0.0)
 

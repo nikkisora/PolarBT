@@ -109,15 +109,15 @@ if __name__ == "__main__":
     )
     results = engine.run()
 
-    print(f"Total Return:    {results['total_return']:+.2%}")
-    print(f"Sharpe Ratio:    {results['sharpe_ratio']:.3f}")
-    print(f"Max Drawdown:    {results['max_drawdown']:.2%}")
-    print(f"Calmar Ratio:    {results['calmar_ratio']:.3f}")
-    print(f"Final Equity:    ${results['final_equity']:,.2f}")
+    print(f"Total Return:    {results.total_return:+.2%}")
+    print(f"Sharpe Ratio:    {results.sharpe_ratio:.3f}")
+    print(f"Max Drawdown:    {results.max_drawdown:.2%}")
+    print(f"Calmar Ratio:    {results.calmar_ratio:.3f}")
+    print(f"Final Equity:    ${results.final_equity:,.2f}")
 
-    trade_stats = results["trade_stats"]
-    print(f"Trades:          {trade_stats['total_trades']}")
-    print(f"Win Rate:        {trade_stats['win_rate']:.1f}%")
+    trade_stats = results.trade_stats
+    print(f"Trades:          {trade_stats.total_trades}")
+    print(f"Win Rate:        {trade_stats.win_rate:.1f}%")
 
     # Show final positions
     print("\nFinal Positions:")

@@ -263,18 +263,19 @@ class TestWarmupWithBacktest:
     def test_backtest_auto_warmup_default(self, sample_data: pl.DataFrame) -> None:
         """Test backtest uses auto warmup by default."""
         results = backtest(TrackingStrategy, sample_data, params={"period": 20})
-        assert results["success"]
+        assert results.success
 
     def test_backtest_manual_warmup(self, sample_data: pl.DataFrame) -> None:
         """Test backtest with manual warmup."""
         results = backtest(TrackingStrategy, sample_data, params={"period": 20}, warmup=15)
-        assert results["success"]
+        assert results.success
 
     def test_backtest_invalid_warmup(self, sample_data: pl.DataFrame) -> None:
         """Test backtest rejects invalid warmup."""
         results = backtest(TrackingStrategy, sample_data, warmup="invalid")
-        assert not results["success"]
-        assert "warmup must be an integer or 'auto'" in results["error"]
+        assert not results.success
+        assert results.error is not None
+        assert "warmup must be an integer or 'auto'" in results.error
 
 
 class TestWarmupEdgeCases:
@@ -424,7 +425,7 @@ class TestWarmupWithMultiAsset:
 
         results = backtest(MultiAssetTracker, data, params={})
 
-        assert results["success"]
+        assert results.success
 
 
 class TestWarmupIntegration:
@@ -449,7 +450,7 @@ class TestWarmupIntegration:
                     ctx.portfolio.close_position("asset")
 
         results = backtest(NoNoneCheckStrategy, sample_data)
-        assert results["success"]
+        assert results.success
 
     def test_strategy_with_manual_warmup_needs_checks(self, sample_data: pl.DataFrame) -> None:
         """Test that manual warmup=0 requires None checks."""
@@ -469,7 +470,7 @@ class TestWarmupIntegration:
 
         # This should fail because SMA is None at early bars
         results = backtest(NoNoneCheckStrategy, sample_data, warmup=0)
-        assert not results["success"]
+        assert not results.success
 
     def test_warmup_consistency_across_runs(self, sample_data: pl.DataFrame) -> None:
         """Test that warmup is consistent across multiple runs."""
@@ -477,5 +478,5 @@ class TestWarmupIntegration:
         results2 = backtest(TrackingStrategy, sample_data, params={"period": 20})
 
         # Results should be identical
-        assert results1["total_return"] == results2["total_return"]
-        assert results1["final_equity"] == results2["final_equity"]
+        assert results1.total_return == results2.total_return
+        assert results1.final_equity == results2.final_equity

@@ -137,19 +137,19 @@ def main() -> None:
 
     print("\nStrategy Performance:")
     print("-" * 80)
-    print(f"Total Return:    {results['total_return']:.2%}")
-    print(f"Sharpe Ratio:    {results['sharpe_ratio']:.2f}")
-    print(f"Max Drawdown:    {results['max_drawdown']:.2%}")
-    print(f"Win Rate:        {results['win_rate']:.2%}")
-    print(f"Profit Factor:   {results.get('profit_factor', 0):.2f}")
+    print(f"Total Return:    {results.total_return:.2%}")
+    print(f"Sharpe Ratio:    {results.sharpe_ratio:.2f}")
+    print(f"Max Drawdown:    {results.max_drawdown:.2%}")
+    print(f"Win Rate:        {results.win_rate:.2%}")
+    print(f"Profit Factor:   {results.profit_factor:.2f}")
 
     # Show trade-level analysis
     print("\nTrade Analysis:")
     print("-" * 80)
 
     # Get trades DataFrame
-    if "trades" in results and len(results["trades"]) > 0:
-        trades_df = results["trades"]
+    if len(results.trades) > 0:
+        trades_df = results.trades
 
         print(f"Total Trades:    {len(trades_df)}")
         print(f"Winning Trades:  {(trades_df['pnl'] > 0).sum()}")

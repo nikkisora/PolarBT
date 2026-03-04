@@ -184,20 +184,20 @@ def main() -> None:
     results = backtest(SimpleRSIStrategy, data, params={}, initial_cash=10_000, commission=0.001)
 
     print("\nStrategy Performance:")
-    print(f"  Total Return:    {results['total_return']:.2%}")
-    print(f"  Sharpe Ratio:    {results['sharpe_ratio']:.2f}")
-    print(f"  Max Drawdown:    {results['max_drawdown']:.2%}")
+    print(f"  Total Return:    {results.total_return:.2%}")
+    print(f"  Sharpe Ratio:    {results.sharpe_ratio:.2f}")
+    print(f"  Max Drawdown:    {results.max_drawdown:.2%}")
 
     # Detailed trade analysis
-    if "trades" in results and len(results["trades"]) > 0:
-        analyze_trades(results["trades"])
+    if len(results.trades) > 0:
+        analyze_trades(results.trades)
 
         # Show complete trade log
         print("\n" + "=" * 80)
         print("COMPLETE TRADE LOG")
         print("=" * 80)
         print(
-            results["trades"].select(
+            results.trades.select(
                 ["trade_id", "entry_bar", "entry_price", "exit_bar", "exit_price", "pnl", "pnl_pct", "bars_held"]
             )
         )

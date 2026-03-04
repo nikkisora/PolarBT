@@ -82,19 +82,19 @@ if __name__ == "__main__":
     )
 
     print("\nBacktest Results:")
-    if results.get("success", True):
-        print(f"  Total Return:     {results.get('total_return', 0):.2%}")
-        print(f"  Sharpe Ratio:     {results.get('sharpe_ratio', 0):.2f}")
-        print(f"  Max Drawdown:     {results.get('max_drawdown', 0):.2%}")
-        print(f"  Final Equity:     ${results.get('final_equity', 0):,.2f}")
-        print(f"  Win Rate:         {results.get('win_rate', 0):.2%}")
+    if results.success is not False:
+        print(f"  Total Return:     {results.total_return:.2%}")
+        print(f"  Sharpe Ratio:     {results.sharpe_ratio:.2f}")
+        print(f"  Max Drawdown:     {results.max_drawdown:.2%}")
+        print(f"  Final Equity:     ${results.final_equity:,.2f}")
+        print(f"  Win Rate:         {results.win_rate:.2%}")
         print("\n  Final Positions:")
-        for asset, qty in results.get("final_positions", {}).items():
+        for asset, qty in results.final_positions.items():
             print(f"    {asset}: {qty:.6f}")
     else:
-        print(f"  ERROR: {results.get('error', 'Unknown error')}")
-        if "traceback" in results:
-            print(f"\n{results['traceback']}")
+        print(f"  ERROR: {results.error or 'Unknown error'}")
+        if results.traceback:
+            print(f"\n{results.traceback}")
 
     print("\n" + "=" * 60)
     print("Example completed successfully!")

@@ -249,4 +249,4 @@ class TestOrderWithSizer:
         df = pl.DataFrame({"close": [100.0, 101.0, 102.0, 103.0, 104.0]})
         engine = Engine(strategy=SizerStrategy(), data=df, initial_cash=10_000.0, warmup=0)
         results = engine.run()
-        assert results["final_equity"] > 0
+        assert results.final_equity > 0

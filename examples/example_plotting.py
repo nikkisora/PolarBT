@@ -105,17 +105,15 @@ engine = Engine(
 )
 results = engine.run()
 
-trade_stats = results["trade_stats"]
-print(f"Total return:  {results['total_return']:+.2%}")
-print(f"Sharpe ratio:  {results['sharpe_ratio']:.2f}")
-print(f"Max drawdown:  {results['max_drawdown']:.2%}")
-print(
-    f"Trades:        {trade_stats['total_trades']} ({trade_stats['winning_trades']}W / {trade_stats['losing_trades']}L)"
-)
-print(f"Win rate:      {trade_stats['win_rate']:.1f}%")
+trade_stats = results.trade_stats
+print(f"Total return:  {results.total_return:+.2%}")
+print(f"Sharpe ratio:  {results.sharpe_ratio:.2f}")
+print(f"Max drawdown:  {results.max_drawdown:.2%}")
+print(f"Trades:        {trade_stats.total_trades} ({trade_stats.winning_trades}W / {trade_stats.losing_trades}L)")
+print(f"Win rate:      {trade_stats.win_rate:.1f}%")
 
 # Print individual trades
-trades_df = results["trades"]
+trades_df = results.trades
 if len(trades_df) > 0:
     print("\nTrades:")
     for row in trades_df.iter_rows(named=True):

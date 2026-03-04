@@ -294,9 +294,9 @@ class TestShortSellingWithEngine:
 
         assert results is not None
         # Short at 100, cover at 80 — profit of 20
-        assert results["total_return"] > 0
+        assert results.total_return > 0
 
-        trades_df = results["trades"]
+        trades_df = results.trades
         assert len(trades_df) == 1
         assert trades_df["direction"][0] == "short"
 
