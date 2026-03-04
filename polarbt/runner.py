@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import itertools
 import multiprocessing as mp
+import sys
+import time
 from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
@@ -328,6 +330,16 @@ def backtest_batch(
     ]
 
     results = []
+    total = len(param_sets)
+    start_time = time.monotonic()
+
+    def _print_progress(done: int) -> None:
+        elapsed = time.monotonic() - start_time
+        rate = done / elapsed if elapsed > 0 else 0.0
+        eta = (total - done) / rate if rate > 0 else 0.0
+        pct = 100 * done // total
+        sys.stdout.write(f"\r  {done}/{total} ({pct}%) | {rate:.1f} bt/s | ETA {eta:.0f}s")
+        sys.stdout.flush()
 
     if n_jobs == 1:
         # Sequential execution — avoids fork-safety issues with Polars on Linux
@@ -335,8 +347,8 @@ def backtest_batch(
             result = _run_backtest_worker(args)
             results.append(result)
 
-            if verbose and i % max(1, len(param_sets) // 10) == 0:
-                print(f"  Progress: {i}/{len(param_sets)} ({100 * i // len(param_sets)}%)")
+            if verbose:
+                _print_progress(i)
     else:
         # Use spawn context to avoid Polars fork deadlocks on Linux
         ctx = mp.get_context("spawn")
@@ -347,11 +359,13 @@ def backtest_batch(
                 result = future.result()
                 results.append(result)
 
-                if verbose and completed % max(1, len(param_sets) // 10) == 0:
-                    print(f"  Progress: {completed}/{len(param_sets)} ({100 * completed // len(param_sets)}%)")
+                if verbose:
+                    _print_progress(completed)
 
     if verbose:
-        print(f"Completed {len(results)} backtests")
+        elapsed = time.monotonic() - start_time
+        sys.stdout.write(f"\r  Completed {total} backtests in {elapsed:.1f}s ({total / elapsed:.1f} bt/s)\n")
+        sys.stdout.flush()
 
     # Convert results to DataFrame
     rows = []
