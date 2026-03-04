@@ -39,7 +39,7 @@ data = pl.from_pandas(ticker).rename(
 )
 
 # Run backtest
-engine = Engine(SMACross(), data, commission=.005, initial_cash=100_000)
+engine = Engine(SMACross(), data, commission=0.005, initial_cash=100_000)
 results = engine.run()
 
 # Pretty-print results

@@ -76,16 +76,7 @@ class SMACross(Strategy):
 # Download data from Yahoo Finance
 ticker = yf.download("AAPL", start="2016-01-01", end="2026-01-01", auto_adjust=True)
 ticker = ticker.droplevel("Ticker", axis=1).reset_index()
-data = pl.from_pandas(ticker).rename(
-    {
-        "Date": "timestamp",
-        "Open": "open",
-        "High": "high",
-        "Low": "low",
-        "Close": "close",
-        "Volume": "volume",
-    }
-)
+data = pl.from_pandas(ticker)
 
 # Run backtest
 engine = Engine(SMACross(), data, commission=.005, initial_cash=100_000)

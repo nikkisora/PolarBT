@@ -87,8 +87,6 @@ polarbt/
 
 ## Additional Documentation
 
-- See `DESCRIPTION.md` for library description, API reference, and current capabilities
-- See `PLAN.md` for remaining work and development roadmap
 - Check source code docstrings for detailed method documentation
 
 # Code style

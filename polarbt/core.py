@@ -101,47 +101,68 @@ def _extract_date(timestamp: Any) -> date | None:
     return None
 
 
+_OHLCV_ALIASES: dict[str, list[str]] = {
+    "open": ["Open", "OPEN", "open_price", "Open_Price"],
+    "high": ["High", "HIGH", "high_price", "High_Price"],
+    "low": ["Low", "LOW", "low_price", "Low_Price"],
+    "close": ["Close", "CLOSE", "close_price", "Close_Price", "adj_close", "Adj_Close", "Adj Close"],
+    "volume": ["Volume", "VOLUME", "vol", "Vol"],
+}
+
+
 def standardize_dataframe(
     df: pl.DataFrame,
     timestamp_col: str | None = None,
     auto_detect: bool = True,
 ) -> pl.DataFrame:
-    """
-    Standardize a DataFrame by renaming common timestamp column names to 'timestamp'.
+    """Standardize a DataFrame by renaming common timestamp and OHLCV column names.
+
+    Detects common column name variants (e.g. ``"Date"`` -> ``"timestamp"``,
+    ``"Open"`` -> ``"open"``) and renames them to the canonical lowercase names
+    expected by the engine.
 
     Args:
-        df: Input DataFrame
-        timestamp_col: Specific timestamp column to rename (if None, auto-detect)
-        auto_detect: Auto-detect common timestamp column names (default True)
+        df: Input DataFrame.
+        timestamp_col: Specific timestamp column to rename (if None, auto-detect).
+        auto_detect: Auto-detect common column names (default True).
 
     Returns:
-        DataFrame with standardized column names
+        DataFrame with standardized column names.
 
     Example:
         # Auto-detect and rename
         df = standardize_dataframe(df)
 
-        # Specify column explicitly
+        # Specify timestamp column explicitly
         df = standardize_dataframe(df, timestamp_col="datetime")
     """
     df = df.clone()
+    renames: dict[str, str] = {}
 
-    # If timestamp column already exists, we're done
-    if "timestamp" in df.columns:
-        return df
+    # --- Timestamp ---
+    if "timestamp" not in df.columns:
+        if timestamp_col and timestamp_col in df.columns:
+            renames[timestamp_col] = "timestamp"
+        elif auto_detect:
+            common_names = ["date", "datetime", "time", "dt", "Date", "DateTime", "Time"]
+            for name in common_names:
+                if name in df.columns:
+                    renames[name] = "timestamp"
+                    break
 
-    # If specific column provided, rename it
-    if timestamp_col and timestamp_col in df.columns:
-        return df.rename({timestamp_col: "timestamp"})
-
-    # Auto-detect common timestamp column names
+    # --- OHLCV ---
     if auto_detect:
-        common_names = ["date", "datetime", "time", "dt", "Date", "DateTime", "Time"]
-        for name in common_names:
-            if name in df.columns:
-                return df.rename({name: "timestamp"})
+        for canonical, aliases in _OHLCV_ALIASES.items():
+            if canonical in df.columns:
+                continue
+            for alias in aliases:
+                if alias in df.columns and alias not in renames:
+                    renames[alias] = canonical
+                    break
 
-    # No timestamp column found or needed
+    if renames:
+        df = df.rename(renames)
+
     return df
 
 

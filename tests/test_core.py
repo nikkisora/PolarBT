@@ -4,7 +4,7 @@ import polars as pl
 import pytest
 
 from polarbt import indicators as ind
-from polarbt.core import BacktestContext, Engine, Portfolio, Strategy
+from polarbt.core import BacktestContext, Engine, Portfolio, Strategy, standardize_dataframe
 
 
 @pytest.fixture
@@ -323,3 +323,59 @@ class TestBacktestContext:
         assert ctx.row["close"] == 100
         assert ctx.bar_index == 10
         assert ctx.portfolio is portfolio
+
+
+class TestStandardizeDataframe:
+    """Test standardize_dataframe OHLCV column name normalization."""
+
+    def test_capitalized_ohlcv_renamed(self):
+        df = pl.DataFrame({"Date": [1], "Open": [1.0], "High": [2.0], "Low": [0.5], "Close": [1.5], "Volume": [100]})
+        result = standardize_dataframe(df)
+        assert result.columns == ["timestamp", "open", "high", "low", "close", "volume"]
+
+    def test_already_lowercase_unchanged(self):
+        df = pl.DataFrame(
+            {"timestamp": [1], "open": [1.0], "high": [2.0], "low": [0.5], "close": [1.5], "volume": [100]}
+        )
+        result = standardize_dataframe(df)
+        assert result.columns == ["timestamp", "open", "high", "low", "close", "volume"]
+
+    def test_mixed_case_columns(self):
+        df = pl.DataFrame({"Date": [1], "open": [1.0], "High": [2.0], "low": [0.5], "Close": [1.5], "volume": [100]})
+        result = standardize_dataframe(df)
+        assert result.columns == ["timestamp", "open", "high", "low", "close", "volume"]
+
+    def test_adj_close_alias(self):
+        df = pl.DataFrame({"timestamp": [1], "Adj_Close": [1.5]})
+        result = standardize_dataframe(df)
+        assert "close" in result.columns
+
+    def test_auto_detect_disabled(self):
+        df = pl.DataFrame({"Open": [1.0], "High": [2.0]})
+        result = standardize_dataframe(df, auto_detect=False)
+        assert result.columns == ["Open", "High"]
+
+    def test_engine_standardizes_ohlcv(self):
+        """Engine should auto-standardize capitalized OHLCV columns."""
+
+        class Noop(Strategy):
+            def preprocess(self, df):
+                return df
+
+            def next(self, ctx):
+                pass
+
+        df = pl.DataFrame(
+            {
+                "Date": range(10),
+                "Open": [1.0] * 10,
+                "High": [2.0] * 10,
+                "Low": [0.5] * 10,
+                "Close": [1.5] * 10,
+                "Volume": [100] * 10,
+            }
+        )
+        engine = Engine(Noop(), df)
+        assert "open" in engine.data.columns
+        assert "close" in engine.data.columns
+        assert "timestamp" in engine.data.columns

@@ -340,12 +340,12 @@ def _patch_interactive(fig: Any) -> None:
         if _AUTO_YFIT_JS not in existing:
             existing = list(existing) + [_AUTO_YFIT_JS]
         kwargs["post_script"] = existing
-        return original_write_html(*args, **kwargs)
+        original_write_html(*args, **kwargs)
 
     def patched_show(self: Any, *args: Any, **kwargs: Any) -> None:
         kwargs.setdefault("config", {})
         kwargs["config"].setdefault("scrollZoom", True)
-        return original_show(*args, **kwargs)
+        original_show(*args, **kwargs)
 
     fig.write_html = types.MethodType(patched_write_html, fig)
     fig.show = types.MethodType(patched_show, fig)
