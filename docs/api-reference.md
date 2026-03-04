@@ -78,8 +78,8 @@ Engine(
     strategy,
     data,
     initial_cash=100_000,
-    commission=0.001,
-    slippage=0.0005,
+    commission=0.0,
+    slippage=0.0,
     price_columns=None,
     warmup="auto",
     order_delay=0,
@@ -110,17 +110,17 @@ Engine(
 
 ### `Order`
 
-Dataclass representing an order with fields: `order_id`, `asset`, `quantity`, `order_type`, `limit_price`, `stop_price`, `status`, `filled_price`, `filled_bar`, `tags`, etc.
+Dataclass representing an order with fields: `order_id`, `asset`, `size`, `order_type`, `limit_price`, `stop_price`, `status`, `filled_price`, `filled_bar`, `tags`, etc.
 
 ## Trades (`polarbt.trades`)
 
 ### `Trade`
 
-Dataclass with fields: `trade_id`, `asset`, `direction`, `entry_price`, `exit_price`, `size`, `pnl`, `pnl_pct`, `entry_bar`, `exit_bar`, `bars_held`, `commission`, `mae`, `mfe`.
+Dataclass with fields: `trade_id`, `asset`, `direction`, `entry_bar`, `entry_timestamp`, `entry_price`, `entry_size`, `entry_value`, `entry_commission`, `exit_bar`, `exit_timestamp`, `exit_price`, `exit_size`, `exit_value`, `exit_commission`, `pnl`, `pnl_pct`, `return_pct`, `bars_held`, `mae`, `mfe`, `tags`.
 
 ### `TradeTracker`
 
-Automatic trade lifecycle tracking. Exports to DataFrame via `to_dataframe()`.
+Automatic trade lifecycle tracking. Exports to DataFrame via `get_trades_df()`.
 
 ## Indicators (`polarbt.indicators`)
 
@@ -134,16 +134,16 @@ All return `pl.Expr` for use in `preprocess()`.
 | `ema` | `ema(column, period) -> Expr` |
 | `wma` | `wma(column, period) -> Expr` |
 | `hma` | `hma(column, period) -> Expr` |
-| `vwap` | `vwap(close, volume, high, low) -> Expr` |
+| `vwap` | `vwap(close, volume, high=None, low=None) -> Expr` |
 | `supertrend` | `supertrend(high, low, close, period, multiplier) -> tuple[Expr, Expr]` |
 | `adx` | `adx(high, low, close, period) -> tuple[Expr, Expr, Expr]` |
+| `macd` | `macd(column, fast=12, slow=26, signal=9) -> tuple[Expr, Expr, Expr]` |
 
 ### Momentum
 
 | Function | Signature |
 |---|---|
 | `rsi` | `rsi(column, period) -> Expr` |
-| `macd` | `macd(column, fast, slow, signal) -> tuple[Expr, Expr, Expr]` |
 | `stochastic` | `stochastic(high, low, close, k, d) -> tuple[Expr, Expr]` |
 | `williams_r` | `williams_r(high, low, close, period) -> Expr` |
 | `cci` | `cci(high, low, close, period) -> Expr` |
@@ -158,7 +158,7 @@ All return `pl.Expr` for use in `preprocess()`.
 |---|---|
 | `bollinger_bands` | `bollinger_bands(column, period, std_dev) -> tuple[Expr, Expr, Expr]` |
 | `atr` | `atr(high, low, close, period) -> Expr` |
-| `keltner_channels` | `keltner_channels(high, low, close, ema, atr, mult) -> tuple[Expr, Expr, Expr]` |
+| `keltner_channels` | `keltner_channels(high, low, close, ema_period=20, atr_period=10, multiplier=2.0) -> tuple[Expr, Expr, Expr]` |
 | `donchian_channels` | `donchian_channels(high, low, period) -> tuple[Expr, Expr, Expr]` |
 
 ### Volume
@@ -185,28 +185,28 @@ All return `pl.Expr` for use in `preprocess()`.
 
 ### `calculate_metrics(equity_df, initial_capital) -> dict`
 
-Returns: `total_return`, `cagr`, `sharpe_ratio`, `sortino_ratio`, `calmar_ratio`, `max_drawdown`, `volatility`, `volatility_annualized`, `ulcer_index`, `tail_ratio`, `max_drawdown_duration`, `avg_drawdown_duration`, `drawdown_count`, `profit_factor`, `initial_equity`, `final_equity`.
+Returns: `total_return`, `cagr`, `sharpe_ratio`, `sortino_ratio`, `calmar_ratio`, `max_drawdown`, `volatility`, `volatility_annualized`, `ulcer_index`, `tail_ratio`, `max_drawdown_duration`, `avg_drawdown_duration`, `drawdown_count`, `profit_factor`, `initial_equity`, `final_equity`, `num_periods`.
 
 ### Standalone Functions
 
 | Function | Description |
 |---|---|
-| `sharpe_ratio(returns, risk_free)` | Sharpe ratio |
-| `sortino_ratio(returns, risk_free)` | Sortino ratio |
-| `max_drawdown(equity)` | Maximum drawdown |
-| `calmar_ratio(returns, equity)` | Calmar ratio |
-| `omega_ratio(returns, threshold)` | Omega ratio |
-| `value_at_risk(returns, confidence)` | VaR |
-| `conditional_value_at_risk(returns, confidence)` | CVaR |
-| `rolling_sharpe(returns, window)` | Rolling Sharpe ratio |
-| `underwater_plot_data(equity)` | Drawdown series |
-| `ulcer_index(equity)` | Ulcer Index |
-| `tail_ratio(returns)` | Tail ratio |
-| `information_ratio(returns, benchmark_returns)` | Information ratio |
-| `alpha_beta(returns, benchmark_returns)` | Alpha and beta |
-| `drawdown_duration_stats(equity)` | Max/avg duration, count |
-| `monthly_returns(equity, timestamps)` | Monthly returns table |
-| `trade_level_metrics(trades_df)` | Expectancy, SQN, Kelly, streaks |
+| `sharpe_ratio(equity_df, risk_free_rate=0.0)` | Sharpe ratio |
+| `sortino_ratio(equity_df, risk_free_rate=0.0, target_return=0.0)` | Sortino ratio |
+| `max_drawdown(equity_df)` | Maximum drawdown |
+| `calmar_ratio(equity_df, initial_capital)` | Calmar ratio |
+| `omega_ratio(equity_df, threshold=0.0)` | Omega ratio |
+| `value_at_risk(equity_df, confidence=0.95)` | VaR |
+| `conditional_value_at_risk(equity_df, confidence=0.95)` | CVaR |
+| `rolling_sharpe(equity_df, window=252)` | Rolling Sharpe ratio |
+| `underwater_plot_data(equity_df)` | Drawdown series |
+| `ulcer_index(equity_df, period=14)` | Ulcer Index |
+| `tail_ratio(equity_df, confidence=0.95)` | Tail ratio |
+| `information_ratio(equity_df, benchmark_df)` | Information ratio |
+| `alpha_beta(equity_df, benchmark_df, risk_free_rate=0.0)` | Alpha and beta |
+| `drawdown_duration_stats(equity_df)` | Max/avg duration, count |
+| `monthly_returns(equity_df)` | Monthly returns table |
+| `trade_level_metrics(trades)` | Expectancy, SQN, Kelly, streaks |
 
 ## Commission Models (`polarbt.commissions`)
 
@@ -260,7 +260,7 @@ Requires `plotly`: `pip install polarbt[plotting]`
 
 | Function | Description |
 |---|---|
-| `plot_backtest(engine, indicators, bands, ...)` | Multi-panel backtest chart |
+| `plot_backtest(engine, price_column=None, asset=None, show_trades=True, show_volume=True, indicators=None, bands=None, ...)` | Multi-panel backtest chart |
 | `plot_returns_distribution(engine, ...)` | Returns histogram |
 | `plot_sensitivity(results_df, param, metric, ...)` | Parameter sensitivity plot |
 | `plot_param_heatmap(results_df, param_x, param_y, metric, ...)` | 2D parameter heatmap |
@@ -274,7 +274,7 @@ All return `plotly.graph_objects.Figure`. Use `save_html="file.html"` to export.
 
 | Function | Description |
 |---|---|
-| `validate(df, ohlcv)` | Run all validation checks |
+| `validate(df, required_columns=None, ohlcv=False, timestamp_column="timestamp")` | Run all validation checks |
 | `validate_columns(df, required, ohlcv)` | Check required columns |
 | `validate_dtypes(df)` | Check numeric dtypes |
 | `validate_timestamps(df, column)` | Check sorted, no duplicates |

@@ -168,8 +168,9 @@ best = optimize(
     n_jobs=4,
 )
 
-print(f"Best params: {best['params']}")
-print(f"Best Sharpe:  {best['sharpe_ratio']:.3f}")
+print(f"Best fast_period: {best['fast_period']}")
+print(f"Best slow_period: {best['slow_period']}")
+print(f"Best Sharpe:      {best['sharpe_ratio']:.3f}")
 ```
 
 ## Multi-Asset Strategies
@@ -191,4 +192,4 @@ Columns are automatically prefixed (e.g., `BTC_close`, `ETH_close`).
 
 - See `examples/` for complete runnable strategies
 - See `docs/api-reference.md` for the full API reference
-- See `DESCRIPTION.md` for detailed feature documentation
+- See `docs/complete-reference.md` for detailed feature documentation

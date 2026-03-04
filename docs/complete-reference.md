@@ -287,9 +287,9 @@ All indicators are Polars expressions used in `preprocess()`. Import as `from po
 ### Support/Resistance
 | Function | Signature | Returns |
 |---|---|---|
-| `pivot_points` | `(high, low, close, method="standard")` | `dict[str, Expr]` — keys: pp, r1-r3, s1-s3 |
+| `pivot_points` | `(high, low, close, method="standard")` | `dict[str, Expr]` — keys vary by method |
 
-Methods: `"standard"`, `"fibonacci"`, `"woodie"`, `"camarilla"`
+Methods: `"standard"` (pp, r1-r3, s1-s3), `"fibonacci"` (pp, r1-r3, s1-s3), `"woodie"` (pp, r1-r2, s1-s2), `"camarilla"` (pp, r1-r3, s1-s3)
 
 ### Usage pattern
 
@@ -534,7 +534,7 @@ Standalone metric functions (take equity DataFrames with `equity` column):
 | `alpha_beta` | `(equity_df, benchmark_df, risk_free_rate=0.0)` | `{"alpha": float, "beta": float}` |
 | `drawdown_duration_stats` | `(equity_df)` | `dict` |
 | `monthly_returns` | `(equity_df)` | `pl.DataFrame` with year, month, return |
-| `trade_level_metrics` | `(trades_list)` | `dict` with expectancy, sqn, kelly |
+| `trade_level_metrics` | `(trades)` | `dict` with expectancy, sqn, kelly |
 | `format_results` | `(results, label_width=30)` | `str` — pretty-printed summary |
 
 ## Plotting
@@ -581,19 +581,22 @@ Optional. Requires TA-Lib C library + Python wrapper.
 ```python
 from polarbt.integrations.talib import talib_expr, talib_multi_expr, talib_series, TALibIndicators
 
-# Single output
-df.with_columns(talib_expr("RSI", "close", timeperiod=14).alias("ta_rsi"))
+# Single output (pass the TA-Lib function object, not a string)
+import talib
+df.with_columns(talib_expr(talib.RSI, "close", timeperiod=14).alias("ta_rsi"))
 
-# Multiple outputs
-macd, signal, hist = talib_multi_expr("MACD", "close", fastperiod=12, slowperiod=26, signalperiod=9)
+# Multiple outputs (returns dict[str, pl.Expr])
+exprs = talib_multi_expr(talib.MACD, "close", fastperiod=12, slowperiod=26, signalperiod=9,
+                         output_names=["macd", "signal", "hist"])
+df.with_columns([v.alias(k) for k, v in exprs.items()])
 
 # Series helper (operates on numpy, returns Series)
-rsi_series = talib_series("RSI", df["close"], timeperiod=14)
+rsi_series = talib_series(talib.RSI, df["close"], timeperiod=14)
 
-# Class-based
-ta = TALibIndicators(df)
-df = ta.add("RSI", "close", timeperiod=14, alias="ta_rsi")
-df = ta.add_multi("MACD", "close", aliases=["macd", "signal", "hist"])
+# Class-based (static methods, no DataFrame needed)
+ta = TALibIndicators()
+df.with_columns(ta.sma("close", 20).alias("ta_sma"))
+df.with_columns(ta.rsi("close", 14).alias("ta_rsi"))
 ```
 
 ## Common Patterns

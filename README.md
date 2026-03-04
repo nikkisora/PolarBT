@@ -9,7 +9,7 @@ A lightweight, high-performance backtesting library for trading strategy develop
 ## Features
 
 - **Hybrid architecture** — vectorized preprocessing (Polars) + event-driven execution loop
-- **30+ built-in indicators** — SMA, EMA, RSI, MACD, Bollinger Bands, ATR, SuperTrend, ADX, and more
+- **25+ built-in indicators** — SMA, EMA, RSI, MACD, Bollinger Bands, ATR, SuperTrend, ADX, and more
 - **Complete order system** — market, limit, stop, stop-limit, bracket orders, day/GTC orders
 - **Risk management** — stop-loss, take-profit, trailing stops, position size limits, drawdown stops
 - **Short selling** — negative positions, borrow costs, position reversals
@@ -144,7 +144,7 @@ Kelly Criterion                             0.2098
 
 - [Getting Started Guide](docs/getting-started.md)
 - [API Reference](docs/api-reference.md)
-- [Full Feature Documentation](DESCRIPTION.md)
+- [Complete Reference](docs/complete-reference.md)
 
 ## License
 

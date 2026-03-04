@@ -67,6 +67,7 @@ After finishing implementing, testing and reviewing the feature, always:
 ```
 polarbt/
 ├── core.py           # Portfolio, Strategy, Engine, BacktestContext
+├── results.py        # BacktestMetrics, TradeStats dataclasses
 ├── orders.py         # Order, OrderType, OrderStatus
 ├── trades.py         # Trade, TradeTracker
 ├── indicators.py     # Technical indicators as Polars expressions
