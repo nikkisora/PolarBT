@@ -7,6 +7,8 @@ for statistical validation of trading strategy results.
 
 from __future__ import annotations
 
+import multiprocessing as mp
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
 from typing import Any
 
@@ -262,6 +264,26 @@ class PermutationTestResult:
     n_permutations: int
 
 
+def _run_permutation_worker(
+    args: tuple[type[Strategy], pl.DataFrame, list[str], np.ndarray, int, str, dict[str, Any]],
+) -> float:
+    """Worker function for parallel permutation test execution.
+
+    Each worker shuffles the data itself using a unique seed to avoid
+    pre-generating all shuffled datasets in the main process.
+    """
+    from polarbt.runner import backtest
+
+    strategy_class, data, price_cols, base_prices, worker_seed, metric, backtest_kwargs = args
+    try:
+        rng = np.random.default_rng(worker_seed)
+        shuffled_data = _shuffle_returns(data, price_cols, base_prices, rng)
+        result = backtest(strategy_class=strategy_class, data=shuffled_data, **backtest_kwargs)
+        return float(getattr(result, metric, 0.0))
+    except Exception:
+        return 0.0
+
+
 def permutation_test(
     strategy_class: type[Strategy],
     data: pl.DataFrame,
@@ -275,6 +297,7 @@ def permutation_test(
     warmup: int | str = "auto",
     order_delay: int = 0,
     params: dict[str, Any] | None = None,
+    n_jobs: int | None = None,
     **engine_kwargs: Any,
 ) -> PermutationTestResult:
     """Test strategy significance by shuffling market returns.
@@ -296,6 +319,8 @@ def permutation_test(
         warmup: Warmup setting.
         order_delay: Order delay.
         params: Strategy parameters.
+        n_jobs: Number of parallel workers. Defaults to all CPUs for large datasets
+            (>50k rows), 1 otherwise. Set to 1 to disable parallelism.
         **engine_kwargs: Additional Engine keyword arguments.
 
     Returns:
@@ -326,7 +351,6 @@ def permutation_test(
         original_metric = float(getattr(orig_result, metric, 0.0))
 
     rng = np.random.default_rng(seed)
-    null_metrics: list[float] = []
 
     # Identify price columns to shuffle
     price_cols = [c for c in ["open", "high", "low", "close"] if c in data.columns]
@@ -337,25 +361,35 @@ def permutation_test(
     base_col = "close" if "close" in data.columns else price_cols[0]
     prices = data[base_col].to_numpy().astype(float)
 
-    for _ in range(n_permutations):
-        # Shuffle returns and reconstruct prices
-        shuffled_data = _shuffle_returns(data, price_cols, prices, rng)
+    # Auto-select parallelism: cap at 4 workers to avoid excessive memory usage
+    # from spawned processes each holding a copy of the data
+    if n_jobs is None:
+        n_jobs = min(4, mp.cpu_count()) if len(data) > 50_000 else 1
 
-        try:
-            result = backtest(
-                strategy_class=strategy_class,
-                data=shuffled_data,
-                params=params,
-                initial_cash=initial_cash,
-                commission=commission,
-                slippage=slippage,
-                warmup=warmup,
-                order_delay=order_delay,
-                **engine_kwargs,
-            )
-            null_metrics.append(float(getattr(result, metric, 0.0)))
-        except Exception:
-            null_metrics.append(0.0)
+    # Generate unique seeds for each permutation so workers can shuffle independently
+    worker_seeds = rng.integers(0, 2**31, size=n_permutations).tolist()
+
+    backtest_kwargs: dict[str, Any] = {
+        "params": params,
+        "initial_cash": initial_cash,
+        "commission": commission,
+        "slippage": slippage,
+        "warmup": warmup,
+        "order_delay": order_delay,
+        **engine_kwargs,
+    }
+
+    worker_args = [(strategy_class, data, price_cols, prices, ws, metric, backtest_kwargs) for ws in worker_seeds]
+
+    if n_jobs == 1:
+        null_metrics = [_run_permutation_worker(wa) for wa in worker_args]
+    else:
+        ctx = mp.get_context("spawn")
+        null_metrics = []
+        with ProcessPoolExecutor(max_workers=n_jobs, mp_context=ctx) as executor:
+            futures = [executor.submit(_run_permutation_worker, args) for args in worker_args]
+            for future in as_completed(futures):
+                null_metrics.append(future.result())
 
     null_array = np.array(null_metrics)
 
@@ -407,12 +441,12 @@ def _shuffle_returns(
     with np.errstate(divide="ignore", invalid="ignore"):
         scale = np.where(base_prices > 0, new_base / base_prices, 1.0)
 
-    # Build new DataFrame
-    new_cols: dict[str, Any] = {}
+    # Build new DataFrame using Polars Series to avoid slow .tolist()
+    new_cols: dict[str, pl.Series] = {}
     for col in data.columns:
         if col in price_cols:
             old_vals = data[col].to_numpy().astype(float)
-            new_cols[col] = (old_vals * scale).tolist()
+            new_cols[col] = pl.Series(col, old_vals * scale)
         else:
             new_cols[col] = data[col]
 
