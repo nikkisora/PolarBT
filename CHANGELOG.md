@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.1.8] - 2026-03-08
 
 ### Added
 - `OptimizeResult` return type for `optimize()` — separates `.params` from `.metrics`, prevents name collisions
