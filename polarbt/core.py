@@ -386,6 +386,7 @@ class Portfolio:
 
         # Order management
         self.orders: dict[str, Order] = {}
+        self._active_order_ids: set[str] = set()
         self._next_order_id: int = 0
 
         # Trade tracking
@@ -532,6 +533,7 @@ class Portfolio:
                         _risk_order=True,
                     )
                     self.orders[order_id] = order
+                    self._active_order_ids.add(order_id)
                     self._try_execute_order(order)
 
     def _is_order_risk_reducing(self, asset: str, quantity: float) -> bool:
@@ -988,11 +990,13 @@ class Portfolio:
 
     def _execute_pending_orders(self) -> None:
         """Execute orders that are due."""
+        if not self._active_order_ids:
+            return
         # Get all pending orders that should execute this bar
         orders_to_execute = [
-            order
-            for order in self.orders.values()
-            if order.is_active() and order.created_bar + self.order_delay <= self._current_bar
+            self.orders[oid]
+            for oid in self._active_order_ids
+            if self.orders[oid].created_bar + self.order_delay <= self._current_bar
         ]
 
         for order in orders_to_execute:
@@ -1000,15 +1004,18 @@ class Portfolio:
 
     def _check_order_expiry(self) -> None:
         """Check and expire orders that have passed their valid_until time or expiry_date."""
+        if not self._active_order_ids:
+            return
         current_date = _extract_date(self._current_timestamp)
 
-        for order in list(self.orders.values()):
-            if not order.is_active():
-                continue
+        expired_ids: list[str] = []
+        for oid in self._active_order_ids:
+            order = self.orders[oid]
 
             # Check date-based expiry first (if order has expiry_date set)
             if order.expiry_date is not None and current_date is not None and current_date > order.expiry_date:
                 order.mark_expired()
+                expired_ids.append(oid)
                 continue
 
             # Check bar-based expiry (skip if this order uses date-based expiry / valid_until was set to large number)
@@ -1018,6 +1025,10 @@ class Portfolio:
                 and (order.expiry_date is None or order.valid_until < 999999)
             ):
                 order.mark_expired()
+                expired_ids.append(oid)
+
+        for oid in expired_ids:
+            self._active_order_ids.discard(oid)
 
     def _can_fill_limit_order(self, order: Order) -> bool:
         """
@@ -1128,6 +1139,13 @@ class Portfolio:
         Returns:
             True if order was executed, False otherwise
         """
+        result = self._try_execute_order_inner(order)
+        if not order.is_active():
+            self._active_order_ids.discard(order.order_id)
+        return result
+
+    def _try_execute_order_inner(self, order: Order) -> bool:
+        """Inner implementation of order execution logic."""
         if order.size == 0:
             order.mark_rejected()
             return False
@@ -1431,6 +1449,7 @@ class Portfolio:
 
         # Store order
         self.orders[order_id] = order
+        self._active_order_ids.add(order_id)
 
         # Try to execute immediately if no delay
         if self.order_delay == 0:
@@ -1775,6 +1794,7 @@ class Portfolio:
             return False
 
         order.mark_cancelled()
+        self._active_order_ids.discard(order_id)
         return True
 
     def set_stop_loss(self, asset: str, stop_price: float | None = None, stop_pct: float | None = None) -> str | None:

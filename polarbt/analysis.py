@@ -265,7 +265,9 @@ class PermutationTestResult:
 
 
 def _run_permutation_worker(
-    args: tuple[type[Strategy], pl.DataFrame, list[str], np.ndarray, int, str, dict[str, Any]],
+    args: tuple[
+        type[Strategy], pl.DataFrame, list[str], np.ndarray, np.ndarray, dict[str, np.ndarray], int, str, dict[str, Any]
+    ],
 ) -> float:
     """Worker function for parallel permutation test execution.
 
@@ -274,10 +276,12 @@ def _run_permutation_worker(
     """
     from polarbt.runner import backtest
 
-    strategy_class, data, price_cols, base_prices, worker_seed, metric, backtest_kwargs = args
+    strategy_class, data, price_cols, base_prices, log_returns, price_arrays, worker_seed, metric, backtest_kwargs = (
+        args
+    )
     try:
         rng = np.random.default_rng(worker_seed)
-        shuffled_data = _shuffle_returns(data, price_cols, base_prices, rng)
+        shuffled_data = _shuffle_returns(data, price_cols, base_prices, log_returns, price_arrays, rng)
         result = backtest(strategy_class=strategy_class, data=shuffled_data, **backtest_kwargs)
         return float(getattr(result, metric, 0.0))
     except Exception:
@@ -360,11 +364,15 @@ def permutation_test(
     # Compute returns from close (or first available price col)
     base_col = "close" if "close" in data.columns else price_cols[0]
     prices = data[base_col].to_numpy().astype(float)
+    log_returns = np.diff(np.log(prices))
 
-    # Auto-select parallelism: cap at 4 workers to avoid excessive memory usage
-    # from spawned processes each holding a copy of the data
+    # Precompute numpy arrays for all price columns to avoid repeated to_numpy() in workers
+    price_arrays = {col: data[col].to_numpy().astype(float) for col in price_cols}
+
+    # Default to sequential execution — multiprocessing via spawn context is
+    # unreliable on WSL/Windows and can cause silent hangs or crashes.
     if n_jobs is None:
-        n_jobs = min(4, mp.cpu_count()) if len(data) > 50_000 else 1
+        n_jobs = 1
 
     # Generate unique seeds for each permutation so workers can shuffle independently
     worker_seeds = rng.integers(0, 2**31, size=n_permutations).tolist()
@@ -379,7 +387,10 @@ def permutation_test(
         **engine_kwargs,
     }
 
-    worker_args = [(strategy_class, data, price_cols, prices, ws, metric, backtest_kwargs) for ws in worker_seeds]
+    worker_args = [
+        (strategy_class, data, price_cols, prices, log_returns, price_arrays, ws, metric, backtest_kwargs)
+        for ws in worker_seeds
+    ]
 
     if n_jobs == 1:
         null_metrics = [_run_permutation_worker(wa) for wa in worker_args]
@@ -413,24 +424,22 @@ def _shuffle_returns(
     data: pl.DataFrame,
     price_cols: list[str],
     base_prices: np.ndarray,
+    log_returns: np.ndarray,
+    price_arrays: dict[str, np.ndarray],
     rng: np.random.Generator,
 ) -> pl.DataFrame:
     """Shuffle returns and reconstruct OHLCV data preserving intra-bar relationships.
 
-    Computes bar-to-bar returns from the close column, shuffles them, then
-    reconstructs all price columns maintaining the ratios between OHLC values
-    within each bar.
+    Uses precomputed log returns and price arrays to avoid redundant computation
+    across permutations. Shuffles the log returns, reconstructs price series,
+    and scales all OHLC columns proportionally.
     """
     n = len(data)
     if n < 2:
         return data
 
-    # Compute log returns of base prices
-    log_returns = np.diff(np.log(base_prices))
-
     # Shuffle the returns
-    shuffled_log_returns = log_returns.copy()
-    rng.shuffle(shuffled_log_returns)
+    shuffled_log_returns = rng.permutation(log_returns)
 
     # Reconstruct base prices from shuffled returns
     new_base = np.empty(n)
@@ -441,12 +450,11 @@ def _shuffle_returns(
     with np.errstate(divide="ignore", invalid="ignore"):
         scale = np.where(base_prices > 0, new_base / base_prices, 1.0)
 
-    # Build new DataFrame using Polars Series to avoid slow .tolist()
+    # Build new DataFrame using precomputed numpy arrays
     new_cols: dict[str, pl.Series] = {}
     for col in data.columns:
-        if col in price_cols:
-            old_vals = data[col].to_numpy().astype(float)
-            new_cols[col] = pl.Series(col, old_vals * scale)
+        if col in price_arrays:
+            new_cols[col] = pl.Series(col, price_arrays[col] * scale)
         else:
             new_cols[col] = data[col]
 
