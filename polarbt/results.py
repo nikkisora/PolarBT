@@ -190,6 +190,7 @@ class BacktestMetrics:
             _fmt("Avg. Trade [%]", self.avg_trade_pct * 100, ".2f"),
             _fmt("Max. Trade Duration [bars]", self.max_trade_duration, ".0f"),
             _fmt("Avg. Trade Duration [bars]", self.avg_trade_duration, ".0f"),
+            _fmt("Avg. Trade MDD [%]", ts.avg_trade_mdd * 100, ".2f"),
             _fmt("Profit Factor", ts.profit_factor, ".2f"),
             _fmt("Expectancy [$]", self.expectancy, ".2f"),
             _fmt("SQN", self.sqn, ".2f"),

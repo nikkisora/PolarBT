@@ -83,7 +83,6 @@ data = pl.from_pandas(ticker)
 engine = Engine(SMACross(), data, commission=.005, initial_cash=100_000)
 results = engine.run()
 
-# Pretty-print results
 print(results)
 
 # Interactive chart saved to HTML
@@ -93,8 +92,8 @@ fig.write_html("backtest.html")
 ```
 
 ```text
-Equity Final [$]                        366,237.10
-Equity Peak [$]                         433,931.04
+Equity Final [$]                        366,236.83
+Equity Peak [$]                         433,930.72
 Return [%]                                  266.24
 Buy & Hold Return [%]                      1044.52
 Return (Ann.) [%]                            14.08
@@ -115,14 +114,39 @@ Worst Trade [%]                             -13.43
 Avg. Trade [%]                                3.94
 Max. Trade Duration [bars]                     128
 Avg. Trade Duration [bars]                      39
+Avg. Trade MDD [%]                           -8.78
 Profit Factor                                 1.79
-Expectancy [$]                             6338.98
+Expectancy [$]                             6338.97
 SQN                                           1.27
 Kelly Criterion                             0.2098
 ```
 <p align="center">
   <img src="assets/example_plot.png" alt="PolarBT" width="100%">
 </p>
+
+## Weight-Based Backtesting
+
+For portfolio allocation strategies, skip the event loop entirely — just supply target weights per (date, symbol):
+
+```python
+import polars as pl
+from polarbt import backtest_weights
+
+# data: long-format DataFrame with columns date, symbol, close, weight
+result = backtest_weights(
+    data,
+    resample="M",           # rebalance monthly
+    resample_offset="2d",   # delay 2 trading days after month boundary
+    fee_ratio=0.001,
+    stop_loss=0.10,          # 10% per-position stop-loss
+    position_limit=0.5,      # max 50% in any single name
+    initial_capital=100_000,
+)
+
+print(result.metrics)        # standard BacktestMetrics
+print(result.trades.head())  # per-trade log
+print(result.next_actions)   # forward-looking rebalance actions
+```
 
 ## Examples
 
