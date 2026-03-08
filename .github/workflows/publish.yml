@@ -33,6 +33,9 @@ jobs:
           new="${major}.${minor}.$((patch + 1))"
           sed -i "s/version = \"${current}\"/version = \"${new}\"/" pyproject.toml
           sed -i "s/__version__ = \"${current}\"/__version__ = \"${new}\"/" polarbt/__init__.py
+          # Update CHANGELOG.md: replace [Unreleased] with [new_version] - date
+          today=$(date +%Y-%m-%d)
+          sed -i "s/## \[Unreleased\]/## [${new}] - ${today}/" CHANGELOG.md
           echo "VERSION=${new}" >> "$GITHUB_ENV"
           echo "Bumped version: ${current} -> ${new}"
 
@@ -41,7 +44,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add pyproject.toml polarbt/__init__.py
+          git add pyproject.toml polarbt/__init__.py CHANGELOG.md
           git commit -m "Bump version to ${VERSION}" || echo "No changes to commit"
           git push
 
