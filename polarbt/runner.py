@@ -131,6 +131,10 @@ def backtest(
         results.params = params
         results.success = True
 
+        # Release engine internals to prevent memory accumulation
+        # across sequential backtest() calls in the same process
+        engine.cleanup()
+
         return results
 
     except Exception as e:
@@ -798,8 +802,8 @@ def optimize_bayesian(
         ... )
     """
     try:
-        from skopt import gp_minimize  # type: ignore[import-untyped]
-        from skopt.space import Integer, Real  # type: ignore[import-untyped]
+        from skopt import gp_minimize  # type: ignore[import-not-found]
+        from skopt.space import Integer, Real  # type: ignore[import-not-found]
     except ImportError:
         raise ImportError(
             "scikit-optimize is required for Bayesian optimization. Install it with: pip install scikit-optimize"

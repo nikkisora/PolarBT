@@ -8,6 +8,7 @@ This module provides the fundamental building blocks for backtesting:
 - BacktestContext: Data container passed to strategy.next()
 """
 
+import gc
 import math
 from abc import ABC, abstractmethod
 from collections import defaultdict
@@ -450,6 +451,11 @@ class Portfolio:
         # Execute pending orders
         self._execute_pending_orders()
 
+        # Purge inactive orders when dict grows too large to prevent
+        # unbounded growth and potential memory corruption (Issue 1)
+        if len(self.orders) > self._MAX_ORDERS_BEFORE_PURGE:
+            self._purge_inactive_orders()
+
     def _deduct_borrow_costs(self) -> None:
         """Deduct borrow costs for short positions.
 
@@ -867,10 +873,15 @@ class Portfolio:
     def _check_stops_with_priority(self) -> None:
         """Check all stop conditions with OHLC priority: open > high > low.
 
-        For each asset with active stops:
-        1. If open breaches any stop -> exit at open price (gap scenario)
-        2. If high breaches take-profit (long) or stop-loss (short) -> exit at threshold
-        3. If low breaches stop-loss (long) or take-profit (short) -> exit at threshold
+        Uses a two-phase approach to avoid mutating self.orders while other
+        methods in the same update_prices() cycle may reference it:
+
+        Phase 1 — Detect triggers (read-only on self.orders):
+            1. If open breaches any stop -> exit at open price (gap scenario)
+            2. If high breaches take-profit (long) or stop-loss (short) -> exit at threshold
+            3. If low breaches stop-loss (long) or take-profit (short) -> exit at threshold
+
+        Phase 2 — Execute all detected closes (mutates self.orders).
 
         Only one exit per asset per bar. First match wins.
         """
@@ -878,6 +889,9 @@ class Portfolio:
         assets_to_check.update(self._stop_losses.keys())
         assets_to_check.update(self._take_profits.keys())
         assets_to_check.update(self._trailing_stops.keys())
+
+        # Phase 1: Detect triggers (does not mutate self.orders)
+        pending_closes: list[tuple[str, float]] = []
 
         for asset in list(assets_to_check):
             if asset not in self.positions:
@@ -911,66 +925,60 @@ class Portfolio:
                 candidates = [p for p in [stop_price, trail_stop_price] if p is not None]
                 effective_stop = min(candidates) if candidates else None
 
-            exited = False
+            fill_price: float | None = None
 
             # Priority 1: Open breaches
-            if effective_stop is not None and (
-                (is_long and open_price <= effective_stop) or (not is_long and open_price >= effective_stop)
-            ):
-                self._close_at_price(asset, open_price)
-                self._cleanup_stops(asset)
-                exited = True
-
             if (
-                not exited
-                and tp_price is not None
+                effective_stop is not None
+                and ((is_long and open_price <= effective_stop) or (not is_long and open_price >= effective_stop))
+                or tp_price is not None
                 and ((is_long and open_price >= tp_price) or (not is_long and open_price <= tp_price))
             ):
-                self._close_at_price(asset, open_price)
-                self._cleanup_stops(asset)
-                exited = True
-
-            if exited:
-                continue
+                fill_price = open_price
 
             # Priority 2: High breaches (TP for long, SL for short)
-            if is_long and tp_price is not None and high_price >= tp_price:
-                self._close_at_price(asset, tp_price)
-                self._cleanup_stops(asset)
-                continue
-            if not is_long and effective_stop is not None and high_price >= effective_stop:
-                self._close_at_price(asset, effective_stop)
-                self._cleanup_stops(asset)
-                continue
+            if fill_price is None:
+                if is_long and tp_price is not None and high_price >= tp_price:
+                    fill_price = tp_price
+                elif not is_long and effective_stop is not None and high_price >= effective_stop:
+                    fill_price = effective_stop
 
             # Priority 3: Low breaches (SL for long, TP for short)
-            if is_long and effective_stop is not None and low_price <= effective_stop:
-                self._close_at_price(asset, effective_stop)
-                self._cleanup_stops(asset)
-                continue
-            if not is_long and tp_price is not None and low_price <= tp_price:
-                self._close_at_price(asset, tp_price)
-                self._cleanup_stops(asset)
-                continue
+            if fill_price is None:
+                if is_long and effective_stop is not None and low_price <= effective_stop:
+                    fill_price = effective_stop
+                elif not is_long and tp_price is not None and low_price <= tp_price:
+                    fill_price = tp_price
 
-            # No exit triggered — update trailing stop high-water mark
-            if trail_info is not None:
-                current_price = self._current_prices.get(asset)
-                if current_price is not None:
-                    trail_pct = trail_info["trail_pct"]
-                    trail_amount = trail_info["trail_amount"]
-                    if is_long and high_price > trail_info["highest_price"]:
-                        trail_info["highest_price"] = high_price
-                        if trail_pct is not None:
-                            trail_info["stop_price"] = high_price * (1 - trail_pct)
-                        elif trail_amount is not None:
-                            trail_info["stop_price"] = high_price - trail_amount
-                    elif not is_long and low_price < trail_info["highest_price"]:
-                        trail_info["highest_price"] = low_price
-                        if trail_pct is not None:
-                            trail_info["stop_price"] = low_price * (1 + trail_pct)
-                        elif trail_amount is not None:
-                            trail_info["stop_price"] = low_price + trail_amount
+            if fill_price is not None:
+                pending_closes.append((asset, fill_price))
+            elif trail_info is not None:
+                # No exit triggered — update trailing stop high-water mark
+                trail_pct = trail_info["trail_pct"]
+                trail_amount = trail_info["trail_amount"]
+                if is_long and high_price > trail_info["highest_price"]:
+                    trail_info["highest_price"] = high_price
+                    if trail_pct is not None:
+                        trail_info["stop_price"] = high_price * (1 - trail_pct)
+                    elif trail_amount is not None:
+                        trail_info["stop_price"] = high_price - trail_amount
+                elif not is_long and low_price < trail_info["highest_price"]:
+                    trail_info["highest_price"] = low_price
+                    if trail_pct is not None:
+                        trail_info["stop_price"] = low_price * (1 + trail_pct)
+                    elif trail_amount is not None:
+                        trail_info["stop_price"] = low_price + trail_amount
+
+        # Phase 2: Execute closes (mutates self.orders)
+        for asset, exit_price in pending_closes:
+            self._close_at_price(asset, exit_price)
+            self._cleanup_stops(asset)
+
+    _MAX_ORDERS_BEFORE_PURGE = 1000
+
+    def _purge_inactive_orders(self) -> None:
+        """Remove filled, cancelled, rejected, and expired orders to prevent unbounded dict growth."""
+        self.orders = {oid: order for oid, order in self.orders.items() if order.is_active()}
 
     def _cleanup_stops(self, asset: str) -> None:
         """Remove all stop-related state for an asset after exit."""
@@ -994,7 +1002,7 @@ class Portfolio:
         """Check and expire orders that have passed their valid_until time or expiry_date."""
         current_date = _extract_date(self._current_timestamp)
 
-        for order in self.orders.values():
+        for order in list(self.orders.values()):
             if not order.is_active():
                 continue
 
@@ -2463,12 +2471,36 @@ class Engine:
         # If no row has all non-null values, return length - 1 (skip all but last)
         return max(0, len(df) - 1)
 
+    def cleanup(self) -> None:
+        """Release references to large internal objects for memory management.
+
+        Call this after extracting results from a completed backtest to free
+        memory occupied by the processed DataFrame, portfolio state, and
+        intermediate data. Useful when running multiple sequential backtests
+        in the same process to prevent memory exhaustion and segfaults.
+        """
+        if self.portfolio is not None:
+            self.portfolio.equity_curve.clear()
+            self.portfolio.timestamps.clear()
+            self.portfolio.orders.clear()
+            self.portfolio.trade_tracker.trades.clear()
+            self.portfolio.trade_tracker.open_positions.clear()
+            self.portfolio.positions.clear()
+            self.portfolio = None
+        self.processed_data = None
+        self.results = None
+        gc.collect()
+
     def run(self) -> BacktestMetrics:
         """Run the backtest simulation.
 
         Returns:
             BacktestMetrics with all performance metrics and trade data.
         """
+        # Clean up state from any previous run to prevent memory accumulation
+        self.processed_data = None
+        self.results = None
+
         # Initialize portfolio
         self.portfolio = Portfolio(
             initial_cash=self.initial_cash,
