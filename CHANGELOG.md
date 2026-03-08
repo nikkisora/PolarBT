@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.1.9] - 2026-03-08
 
 ### Fixed
 - `permutation_test()` OOM crash: workers now shuffle data independently instead of pre-generating all permutations, and `n_jobs` capped to 4
