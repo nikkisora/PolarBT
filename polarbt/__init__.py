@@ -37,7 +37,7 @@ from polarbt.core import (
     standardize_dataframe,
 )
 from polarbt.orders import Order, OrderStatus, OrderType
-from polarbt.results import BacktestMetrics, TradeStats
+from polarbt.results import BacktestMetrics, OptimizeResult, TradeStats
 from polarbt.runner import backtest, backtest_batch, optimize, optimize_bayesian, optimize_multi, walk_forward_analysis
 from polarbt.sizers import (
     FixedRiskSizer,
@@ -103,6 +103,7 @@ __all__ = [
     "LookAheadResult",
     "PermutationTestResult",
     "BacktestMetrics",
+    "OptimizeResult",
     "TradeStats",
     "plotting",
 ]

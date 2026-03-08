@@ -261,9 +261,9 @@ Returned by `Portfolio.get_trade_stats()`. Fields: `total_trades`, `winning_trad
 |---|---|---|
 | `backtest(strategy_class, data, params, ...)` | `BacktestMetrics` | Run single backtest |
 | `backtest_batch(strategy_class, data, param_sets, n_jobs, ...)` | `pl.DataFrame` | Parallel batch execution |
-| `optimize(strategy_class, data, param_grid, objective, constraint, ...)` | `dict[str, Any]` | Grid search optimization |
+| `optimize(strategy_class, data, param_grid, objective, constraint, ...)` | `OptimizeResult` | Grid search optimization (filters failed backtests) |
 | `optimize_multi(strategy_class, data, param_grid, objectives, ...)` | `pl.DataFrame` | Multi-objective Pareto optimization |
-| `optimize_bayesian(strategy_class, data, param_space, objective, n_calls, ...)` | `BacktestMetrics` | Bayesian optimization (requires scikit-optimize) |
+| `optimize_bayesian(strategy_class, data, param_space, objective, n_calls, n_jobs, ...)` | `BacktestMetrics` | Bayesian optimization with parallel eval (requires scikit-optimize) |
 | `walk_forward_analysis(strategy_class, data, param_grid, train_periods, test_periods, ...)` | `pl.DataFrame` | Walk-forward optimization |
 
 ## Visualization (`polarbt.plotting`)

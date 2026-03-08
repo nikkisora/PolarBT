@@ -7,6 +7,7 @@ optimized for evolutionary search and parameter optimization.
 
 from __future__ import annotations
 
+import dataclasses
 import itertools
 import multiprocessing as mp
 import sys
@@ -20,7 +21,7 @@ import polars as pl
 
 from polarbt.commissions import CommissionModel
 from polarbt.core import Engine, Strategy
-from polarbt.results import BacktestMetrics
+from polarbt.results import BacktestMetrics, OptimizeResult
 
 
 @dataclass
@@ -481,7 +482,7 @@ def optimize(
     maintenance_margin: float | None = None,
     fractional_shares: bool = True,
     factor_column: str | None = None,
-) -> dict[str, Any]:
+) -> OptimizeResult:
     """Grid search optimization for strategy parameters.
 
     Args:
@@ -512,7 +513,8 @@ def optimize(
         factor_column: Optional column for price adjustment factor (default None).
 
     Returns:
-        Dictionary with best parameters and results.
+        OptimizeResult with best parameters, metrics, and full results DataFrame.
+        Supports dict-style access for backward compatibility.
 
     Example:
         >>> param_grid = {"fast": [5, 10, 20], "slow": [20, 50, 100]}
@@ -520,6 +522,9 @@ def optimize(
         ...     MyStrategy, data, param_grid,
         ...     constraint=lambda p: p["fast"] < p["slow"],
         ... )
+        >>> best.params  # {"fast": 10, "slow": 50}
+        >>> best.metrics.sharpe_ratio  # 1.23
+        >>> best["fast"]  # 10 (backward compatible)
     """
     param_sets = _generate_param_sets(param_grid, constraint)
 
@@ -565,9 +570,31 @@ def optimize(
     if objective not in results_df.columns:
         raise ValueError(f"Objective '{objective}' not found in results")
 
-    best_row = results_df.sort(objective, descending=maximize).head(1)
+    # Filter out failed backtests so sentinel values don't pollute ranking
+    if "success" in results_df.columns:
+        successful_df = results_df.filter(pl.col("success") == True)  # noqa: E712
+        if len(successful_df) == 0:
+            raise ValueError("All backtests failed — no valid results to optimize")
+        results_df_filtered = successful_df
+    else:
+        results_df_filtered = results_df
 
-    return best_row.to_dicts()[0]
+    best_row = results_df_filtered.sort(objective, descending=maximize).head(1)
+    best_dict = best_row.to_dicts()[0]
+
+    # Separate params from metrics
+    param_keys = set(param_grid.keys())
+    best_params = {k: v for k, v in best_dict.items() if k in param_keys}
+    best_metrics_dict = {k: v for k, v in best_dict.items() if k not in param_keys}
+
+    # Build a BacktestMetrics from the scalar dict (best-effort field mapping)
+    metrics_kwargs: dict[str, Any] = {}
+    for f in dataclasses.fields(BacktestMetrics):
+        if f.name in best_metrics_dict:
+            metrics_kwargs[f.name] = best_metrics_dict[f.name]
+    best_metrics = BacktestMetrics(**metrics_kwargs)
+
+    return OptimizeResult(params=best_params, metrics=best_metrics, results_df=results_df)
 
 
 def optimize_multi(
@@ -746,6 +773,7 @@ def optimize_bayesian(
     price_columns: dict[str, str] | None = None,
     warmup: int | str = "auto",
     order_delay: int = 0,
+    n_jobs: int | None = None,
     verbose: bool = True,
     borrow_rate: float = 0.0,
     bars_per_day: float | None = None,
@@ -775,12 +803,14 @@ def optimize_bayesian(
         n_calls: Total number of evaluations (default 50).
         n_initial_points: Number of random initial points (default 10).
         constraint: Optional callable to reject parameter combinations.
+            Constrained points are skipped without polluting the surrogate model.
         initial_cash: Starting capital.
         commission: Commission rate.
         slippage: Slippage rate.
         price_columns: Asset price columns.
         warmup: Warmup setting.
         order_delay: Order delay in bars.
+        n_jobs: Number of parallel jobs for batch evaluation (default: all CPUs).
         verbose: Print progress.
         borrow_rate: Annual borrow rate for short positions.
         bars_per_day: Bars per trading day.
@@ -802,7 +832,7 @@ def optimize_bayesian(
         ... )
     """
     try:
-        from skopt import gp_minimize  # type: ignore[import-not-found]
+        from skopt import Optimizer  # type: ignore[import-not-found]
         from skopt.space import Integer, Real  # type: ignore[import-not-found]
     except ImportError:
         raise ImportError(
@@ -839,46 +869,121 @@ def optimize_bayesian(
 
     all_results: list[BacktestMetrics] = []
 
-    def objective_func(x: list[Any]) -> float:
-        params = dict(zip(keys, x, strict=True))
-
-        if constraint is not None and not constraint(params):
-            return 999.0 if maximize else -999.0
-
-        result = backtest(
-            strategy_class=strategy_class,
-            data=data,
-            params=params,
-            **engine_kwargs,
-        )
-        all_results.append(result)
-
-        val = getattr(result, objective, -999.0 if maximize else 999.0)
-        if not isinstance(val, (int, float)):
-            val = -999.0 if maximize else 999.0
-
-        return -float(val) if maximize else float(val)
-
-    opt_result = gp_minimize(
-        objective_func,
-        dimensions,
-        n_calls=n_calls,
+    optimizer = Optimizer(
+        dimensions=dimensions,
         n_initial_points=n_initial_points,
-        verbose=verbose,
     )
 
-    best_params = dict(zip(keys, opt_result.x, strict=True))
+    if n_jobs is None:
+        n_jobs = mp.cpu_count()
 
-    # Run final backtest with best params to get full results
-    best_result = backtest(
-        strategy_class=strategy_class,
-        data=data,
-        params=best_params,
-        **engine_kwargs,
-    )
-    best_result.all_results_df = (
-        pl.DataFrame([r.to_scalar_dict() for r in all_results]) if all_results else pl.DataFrame()
-    )
+    evaluated = 0
+    while evaluated < n_calls:
+        # Ask for a batch of candidates
+        batch_size = min(max(n_jobs, 1), n_calls - evaluated)
+        candidates = optimizer.ask(n_points=batch_size)
+
+        # Filter by constraint (don't tell the GP about rejected points)
+        valid_candidates: list[list[Any]] = []
+        valid_params_list: list[dict[str, Any]] = []
+        for x in candidates:
+            params = dict(zip(keys, x, strict=True))
+            if constraint is not None and not constraint(params):
+                continue
+            valid_candidates.append(x)
+            valid_params_list.append(params)
+
+        if not valid_candidates:
+            # All candidates rejected by constraint — ask again
+            # Count toward n_calls to avoid infinite loops
+            evaluated += batch_size
+            continue
+
+        # Evaluate valid candidates (parallel or sequential)
+        batch_results: list[BacktestMetrics] = []
+        if n_jobs <= 1 or len(valid_params_list) == 1:
+            for params in valid_params_list:
+                result = backtest(
+                    strategy_class=strategy_class,
+                    data=data,
+                    params=params,
+                    **engine_kwargs,
+                )
+                batch_results.append(result)
+        else:
+            ctx = mp.get_context("spawn")
+            args_list = [
+                (
+                    strategy_class,
+                    data,
+                    params,
+                    *[
+                        engine_kwargs[k]
+                        for k in [
+                            "initial_cash",
+                            "commission",
+                            "slippage",
+                            "price_columns",
+                            "warmup",
+                            "order_delay",
+                            "borrow_rate",
+                            "bars_per_day",
+                            "max_position_size",
+                            "max_total_exposure",
+                            "max_drawdown_stop",
+                            "daily_loss_limit",
+                            "leverage",
+                            "maintenance_margin",
+                            "fractional_shares",
+                            "factor_column",
+                        ]
+                    ],
+                )
+                for params in valid_params_list
+            ]
+            with ProcessPoolExecutor(max_workers=n_jobs, mp_context=ctx) as executor:
+                for br in executor.map(_run_backtest_worker, args_list):
+                    batch_results.append(br.metrics)
+
+        # Tell the optimizer about results
+        obj_values: list[float] = []
+        for result in batch_results:
+            all_results.append(result)
+            raw_val = getattr(result, objective, None)
+            obj_val: float
+            if not isinstance(raw_val, (int, float)) or (result.success is False):
+                obj_val = -999.0 if maximize else 999.0
+            else:
+                obj_val = float(raw_val)
+            obj_values.append(-obj_val if maximize else obj_val)
+
+        optimizer.tell(valid_candidates, obj_values)
+        evaluated += batch_size
+
+        if verbose:
+            best_so_far = min(obj_values) if maximize else min(obj_values)
+            actual_best = -best_so_far if maximize else best_so_far
+            sys.stdout.write(f"\r  {evaluated}/{n_calls} evaluations | best {objective}: {actual_best:.4f}")
+            sys.stdout.flush()
+
+    if verbose:
+        sys.stdout.write("\n")
+        sys.stdout.flush()
+
+    # Find the best result from all evaluated runs (no redundant re-run)
+    if not all_results:
+        raise ValueError("No valid parameter combinations were evaluated")
+
+    best_idx = 0
+    best_val: float = float(getattr(all_results[0], objective, float("-inf") if maximize else float("inf")))
+    for i, r in enumerate(all_results[1:], 1):
+        val: float = float(getattr(r, objective, float("-inf") if maximize else float("inf")))
+        if (maximize and val > best_val) or (not maximize and val < best_val):
+            best_val = val
+            best_idx = i
+
+    best_result = all_results[best_idx]
+    best_result.all_results_df = pl.DataFrame([r.to_scalar_dict() for r in all_results])
 
     return best_result
 

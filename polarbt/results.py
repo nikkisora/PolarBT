@@ -217,6 +217,56 @@ class BacktestMetrics:
         return result
 
 
+class OptimizeResult:
+    """Result of a grid-search optimization, separating params from metrics.
+
+    Supports dict-style ``result["key"]`` access for backward compatibility.
+    Params are checked first, then metric scalars.
+
+    Attributes:
+        params: Best strategy parameters.
+        metrics: Full ``BacktestMetrics`` for the best run.
+        results_df: DataFrame with all evaluated parameter combinations.
+    """
+
+    def __init__(
+        self,
+        params: dict[str, Any],
+        metrics: BacktestMetrics,
+        results_df: pl.DataFrame,
+    ) -> None:
+        self.params = params
+        self.metrics = metrics
+        self.results_df = results_df
+        self._scalar_dict: dict[str, Any] = {**params, **metrics.to_scalar_dict()}
+
+    # Backward-compatible dict-style access
+    def __getitem__(self, key: str) -> Any:
+        return self._scalar_dict[key]
+
+    def __contains__(self, key: object) -> bool:
+        return key in self._scalar_dict
+
+    def get(self, key: str, default: Any = None) -> Any:
+        """Get a value by key with an optional default."""
+        return self._scalar_dict.get(key, default)
+
+    def keys(self) -> Any:
+        """Return all available keys (params + metric scalars)."""
+        return self._scalar_dict.keys()
+
+    def values(self) -> Any:
+        """Return all values."""
+        return self._scalar_dict.values()
+
+    def items(self) -> Any:
+        """Return all key-value pairs."""
+        return self._scalar_dict.items()
+
+    def __repr__(self) -> str:
+        return f"OptimizeResult(params={self.params!r}, sharpe_ratio={self.metrics.sharpe_ratio:.4f})"
+
+
 def _backtest_metrics_from_dict(metrics_dict: dict[str, Any], trade_stats: TradeStats) -> BacktestMetrics:
     """Construct BacktestMetrics from a metrics dictionary and TradeStats.
 

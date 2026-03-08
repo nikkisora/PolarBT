@@ -146,6 +146,62 @@ class TestOptimize:
         assert best_max is not None
         assert best_min is not None
 
+    def test_optimize_returns_optimize_result(self, sample_data):
+        """optimize() returns OptimizeResult with separated params and metrics."""
+        from polarbt.results import OptimizeResult
+
+        param_grid = {"sma_period": [5, 10, 20]}
+        best = optimize(SampleStrategy, sample_data, param_grid, verbose=False)
+
+        assert isinstance(best, OptimizeResult)
+        assert "sma_period" in best.params
+        assert best.metrics.sharpe_ratio is not None
+        assert best.results_df is not None
+        assert len(best.results_df) == 3
+
+        # Backward compat: dict-style access still works
+        assert best["sma_period"] == best.params["sma_period"]
+        assert "sharpe_ratio" in best
+
+    def test_optimize_filters_failed_backtests(self, sample_data):
+        """optimize() filters out failed backtests so sentinels don't win."""
+
+        class FailingStrategy(Strategy):
+            def preprocess(self, df):
+                if self.params.get("sma_period") == 5:
+                    raise ValueError("Intentional failure")
+                return df.with_columns([ind.sma("close", self.params.get("sma_period", 10)).alias("sma")])
+
+            def next(self, ctx):
+                sma = ctx.row.get("sma")
+                close = ctx.row.get("close")
+                if sma and close and close > sma:
+                    ctx.portfolio.order_target_percent("asset", 0.8)
+
+        param_grid = {"sma_period": [5, 10, 20]}
+        best = optimize(
+            FailingStrategy,
+            sample_data,
+            param_grid,
+            objective="sharpe_ratio",
+            maximize=False,
+            verbose=False,
+            n_jobs=1,
+        )
+        # The failed backtest (sma_period=5, sharpe=-999) should NOT be selected
+        assert best.params["sma_period"] != 5
+
+    def test_optimize_no_param_metric_collision(self, sample_data):
+        """OptimizeResult separates params from metrics even with overlapping names."""
+        import dataclasses
+
+        param_grid = {"sma_period": [5, 10]}
+        best = optimize(SampleStrategy, sample_data, param_grid, verbose=False)
+
+        # params dict only has strategy params, metrics has everything else
+        assert "sma_period" in best.params
+        assert "sma_period" not in {f.name for f in dataclasses.fields(best.metrics)}
+
 
 @pytest.fixture
 def datetime_data():

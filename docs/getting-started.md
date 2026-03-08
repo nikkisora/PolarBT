@@ -169,9 +169,13 @@ best = optimize(
     n_jobs=4,
 )
 
+# OptimizeResult separates params from metrics
+print(f"Best params: {best.params}")
+print(f"Best Sharpe: {best.metrics.sharpe_ratio:.3f}")
+
+# Dict-style access still works
 print(f"Best fast_period: {best['fast_period']}")
 print(f"Best slow_period: {best['slow_period']}")
-print(f"Best Sharpe:      {best['sharpe_ratio']:.3f}")
 ```
 
 ## Multi-Asset Strategies

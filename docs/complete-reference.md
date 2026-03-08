@@ -399,7 +399,18 @@ best = optimize(
     maximize=True,
     constraint=lambda p: p["fast"] < p["slow"],
 )
+
+# Returns OptimizeResult — params and metrics are separated
+best.params          # {"fast": 10, "slow": 50}
+best.metrics         # BacktestMetrics instance
+best.results_df      # DataFrame with all evaluated combinations
+
+# Dict-style access still works (backward compatible)
+best["fast"]         # 10
+best["sharpe_ratio"] # 1.23
 ```
+
+Failed backtests (`success=False`) are filtered out before selecting the best result.
 
 ### Multi-objective Pareto optimization
 
@@ -414,7 +425,7 @@ pareto_df = optimize_multi(
 
 ### Bayesian optimization
 
-Requires `scikit-optimize`. Uses continuous parameter spaces.
+Requires `scikit-optimize`. Uses continuous parameter spaces with parallel evaluation.
 
 ```python
 best = optimize_bayesian(
@@ -422,8 +433,12 @@ best = optimize_bayesian(
     param_space={"sma_period": (5, 50), "rsi_period": (7, 28)},
     n_calls=50,
     n_initial_points=10,
+    n_jobs=4,  # parallel batch evaluation
+    constraint=lambda p: p["sma_period"] < p["rsi_period"] * 2,
 )
 ```
+
+Constraints are handled cleanly — rejected points are skipped without polluting the GP surrogate model.
 
 ### Walk-forward analysis
 
