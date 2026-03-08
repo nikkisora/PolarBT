@@ -419,7 +419,13 @@ def supertrend(
         direction = np.ones(n)
         st = np.full(n, np.nan)
 
-        for i in range(1, n):
+        # Seed bands at first valid index (where ATR is available)
+        first_valid = 1
+        lower_band[first_valid] = lower_basic[first_valid]
+        upper_band[first_valid] = upper_basic[first_valid]
+        st[first_valid] = lower_band[first_valid]
+
+        for i in range(first_valid + 1, n):
             if lower_basic[i] > lower_band[i - 1] or c[i - 1] < lower_band[i - 1]:
                 lower_band[i] = lower_basic[i]
             else:

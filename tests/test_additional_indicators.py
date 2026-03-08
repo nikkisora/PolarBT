@@ -87,6 +87,21 @@ class TestSuperTrend:
         # Line should have values after warmup
         assert df["st"].drop_nulls().len() > 0
 
+    def test_direction_flips_on_trend_reversal(self):
+        """SuperTrend direction must flip when price reverses sharply."""
+        n = 200
+        close = np.zeros(n)
+        close[0] = 100.0
+        for i in range(1, n):
+            close[i] = close[i - 1] + (2.0 if (i // 30) % 2 == 0 else -2.0)
+        high = close + 0.5
+        low = close - 0.5
+        df = pl.DataFrame({"high": high, "low": low, "close": close})
+        st_line, st_dir = ind.supertrend("high", "low", "close", 10, 3.0)
+        result = df.with_columns([st_dir.alias("st_dir")])
+        dirs = set(result["st_dir"].to_list())
+        assert 1.0 in dirs and -1.0 in dirs, "SuperTrend should detect both up and down trends"
+
 
 class TestADX:
     def test_basic(self, ohlcv_data: pl.DataFrame):
