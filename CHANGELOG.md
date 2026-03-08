@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.1.10] - 2026-03-08
 
 ### Changed
 - Permutation test ~7.7x faster on large datasets via active order tracking and precomputed arrays
