@@ -59,6 +59,7 @@ def backtest(
     leverage: float = 1.0,
     maintenance_margin: float | None = None,
     fractional_shares: bool = True,
+    factor_column: str | None = None,
 ) -> BacktestMetrics:
     """Run a single backtest.
 
@@ -85,6 +86,7 @@ def backtest(
         daily_loss_limit: Maximum daily loss before halting trading for the day (default None)
         leverage: Maximum leverage multiplier (default 1.0)
         maintenance_margin: Minimum margin ratio before margin call (default None)
+        factor_column: Optional column for price adjustment factor (default None)
 
     Returns:
         BacktestMetrics with all performance metrics and trade data.
@@ -122,6 +124,7 @@ def backtest(
             leverage=leverage,
             maintenance_margin=maintenance_margin,
             fractional_shares=fractional_shares,
+            factor_column=factor_column,
         )
 
         results = engine.run()
@@ -163,6 +166,7 @@ def _run_backtest_worker(
         float,
         float | None,
         bool,
+        str | None,
     ],
 ) -> BacktestResult:
     """
@@ -172,7 +176,7 @@ def _run_backtest_worker(
         args: Tuple of (strategy_class, data, params, initial_cash, commission, slippage,
               price_columns, warmup, order_delay, borrow_rate, bars_per_day,
               max_position_size, max_total_exposure, max_drawdown_stop, daily_loss_limit,
-              leverage, maintenance_margin, fractional_shares)
+              leverage, maintenance_margin, fractional_shares, factor_column)
 
     Returns:
         BacktestResult object
@@ -196,6 +200,7 @@ def _run_backtest_worker(
         leverage,
         maintenance_margin,
         fractional_shares,
+        factor_column,
     ) = args
 
     try:
@@ -218,6 +223,7 @@ def _run_backtest_worker(
             leverage=leverage,
             maintenance_margin=maintenance_margin,
             fractional_shares=fractional_shares,
+            factor_column=factor_column,
         )
 
         return BacktestResult(
@@ -256,6 +262,7 @@ def backtest_batch(
     leverage: float = 1.0,
     maintenance_margin: float | None = None,
     fractional_shares: bool = True,
+    factor_column: str | None = None,
 ) -> pl.DataFrame:
     """
     Run multiple backtests in parallel.
@@ -283,6 +290,7 @@ def backtest_batch(
         daily_loss_limit: Maximum daily loss before halting for the day (default None)
         leverage: Maximum leverage multiplier (default 1.0)
         maintenance_margin: Minimum margin ratio before margin call (default None)
+        factor_column: Optional column for price adjustment factor (default None)
 
     Returns:
         Polars DataFrame with results for each parameter set
@@ -325,6 +333,7 @@ def backtest_batch(
             leverage,
             maintenance_margin,
             fractional_shares,
+            factor_column,
         )
         for params in param_sets
     ]
@@ -397,6 +406,7 @@ def _collect_engine_kwargs(
     leverage: float,
     maintenance_margin: float | None,
     fractional_shares: bool = True,
+    factor_column: str | None = None,
 ) -> dict[str, Any]:
     """Collect common engine keyword arguments into a dictionary."""
     return {
@@ -415,6 +425,7 @@ def _collect_engine_kwargs(
         "leverage": leverage,
         "maintenance_margin": maintenance_margin,
         "fractional_shares": fractional_shares,
+        "factor_column": factor_column,
     }
 
 
@@ -465,6 +476,7 @@ def optimize(
     leverage: float = 1.0,
     maintenance_margin: float | None = None,
     fractional_shares: bool = True,
+    factor_column: str | None = None,
 ) -> dict[str, Any]:
     """Grid search optimization for strategy parameters.
 
@@ -493,6 +505,7 @@ def optimize(
         daily_loss_limit: Maximum daily loss before halting for the day (default None).
         leverage: Maximum leverage multiplier (default 1.0).
         maintenance_margin: Minimum margin ratio before margin call (default None).
+        factor_column: Optional column for price adjustment factor (default None).
 
     Returns:
         Dictionary with best parameters and results.
@@ -541,6 +554,7 @@ def optimize(
             leverage,
             maintenance_margin,
             fractional_shares,
+            factor_column,
         ),
     )
 
@@ -576,6 +590,7 @@ def optimize_multi(
     leverage: float = 1.0,
     maintenance_margin: float | None = None,
     fractional_shares: bool = True,
+    factor_column: str | None = None,
 ) -> pl.DataFrame:
     """Multi-objective optimization returning the Pareto front.
 
@@ -656,6 +671,7 @@ def optimize_multi(
             leverage,
             maintenance_margin,
             fractional_shares,
+            factor_column,
         ),
     )
 
@@ -736,6 +752,7 @@ def optimize_bayesian(
     leverage: float = 1.0,
     maintenance_margin: float | None = None,
     fractional_shares: bool = True,
+    factor_column: str | None = None,
 ) -> BacktestMetrics:
     """Bayesian optimization for strategy parameters using scikit-optimize.
 
@@ -813,6 +830,7 @@ def optimize_bayesian(
         leverage,
         maintenance_margin,
         fractional_shares,
+        factor_column,
     )
 
     all_results: list[BacktestMetrics] = []
@@ -888,6 +906,7 @@ def walk_forward_analysis(
     leverage: float = 1.0,
     maintenance_margin: float | None = None,
     fractional_shares: bool = True,
+    factor_column: str | None = None,
 ) -> pl.DataFrame:
     """Perform walk-forward analysis.
 
@@ -980,6 +999,7 @@ def walk_forward_analysis(
             leverage=leverage,
             maintenance_margin=maintenance_margin,
             fractional_shares=fractional_shares,
+            factor_column=factor_column,
         )
 
         # Extract the optimized parameter values from the flat result row
@@ -1006,6 +1026,7 @@ def walk_forward_analysis(
             leverage=leverage,
             maintenance_margin=maintenance_margin,
             fractional_shares=fractional_shares,
+            factor_column=factor_column,
         )
 
         test_scalars = test_result.to_scalar_dict()

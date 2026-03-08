@@ -417,3 +417,67 @@ def _shuffle_returns(
             new_cols[col] = data[col]
 
     return pl.DataFrame(new_cols)
+
+
+def compute_next_actions(
+    current_positions: dict[str, float],
+    target_weights: dict[str, float],
+    portfolio_value: float,
+    current_prices: dict[str, float],
+) -> pl.DataFrame:
+    """Compute forward-looking stock operations for transitioning to target weights.
+
+    Compares current positions against target weights and classifies each symbol
+    as enter, exit, or hold, with delta shares needed for the rebalance.
+
+    Args:
+        current_positions: Current portfolio positions {symbol: shares}.
+        target_weights: Target portfolio weights {symbol: weight}.
+        portfolio_value: Total portfolio value.
+        current_prices: Current prices {symbol: price}.
+
+    Returns:
+        DataFrame with columns: symbol, action, current_value, target_value, delta_shares.
+    """
+    all_symbols = set(current_positions.keys()) | set(target_weights.keys())
+    records: list[dict[str, Any]] = []
+
+    for sym in sorted(all_symbols):
+        current_qty = current_positions.get(sym, 0.0)
+        price = current_prices.get(sym, 0.0)
+        current_value = current_qty * price
+        target_w = target_weights.get(sym, 0.0)
+        target_value = portfolio_value * target_w
+        delta_value = target_value - current_value
+        delta_shares = delta_value / price if price > 0 else 0.0
+
+        if current_qty == 0 and target_w != 0:
+            action = "enter"
+        elif current_qty != 0 and target_w == 0:
+            action = "exit"
+        else:
+            action = "hold"
+
+        records.append(
+            {
+                "symbol": sym,
+                "action": action,
+                "current_value": round(current_value, 2),
+                "target_value": round(target_value, 2),
+                "delta_shares": round(delta_shares, 6),
+            }
+        )
+
+    return (
+        pl.DataFrame(records)
+        if records
+        else pl.DataFrame(
+            schema={
+                "symbol": pl.Utf8,
+                "action": pl.Utf8,
+                "current_value": pl.Float64,
+                "target_value": pl.Float64,
+                "delta_shares": pl.Float64,
+            }
+        )
+    )

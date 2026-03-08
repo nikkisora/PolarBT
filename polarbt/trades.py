@@ -48,6 +48,9 @@ class Trade:
 
         mae: Maximum Adverse Excursion (worst drawdown during trade)
         mfe: Maximum Favorable Excursion (best profit during trade)
+        bmfe: Before-MAE MFE — MFE at the moment MAE last worsened
+        trade_mdd: Maximum drawdown within this trade's lifetime
+        pdays: Number of bars where the trade was in profit
 
         tags: User tags for categorization
 
@@ -96,6 +99,9 @@ class Trade:
 
     mae: float | None = None
     mfe: float | None = None
+    bmfe: float | None = None
+    trade_mdd: float | None = None
+    pdays: int | None = None
 
     tags: list[str] = field(default_factory=list)
 
@@ -185,21 +191,23 @@ class TradeTracker:
             "entry_value": abs_size * price,
             "entry_commission": commission,
             "direction": direction,
-            "mae": 0.0,  # Maximum Adverse Excursion
-            "mfe": 0.0,  # Maximum Favorable Excursion
+            "mae": 0.0,
+            "mfe": 0.0,
+            "bmfe": 0.0,
+            "trade_mdd": 0.0,
+            "peak_pnl": 0.0,
+            "pdays": 0,
         }
 
     def update_mae_mfe(self, asset: str, current_price: float) -> None:
-        """
-        Update Maximum Adverse Excursion (MAE) and Maximum Favorable Excursion (MFE)
-        for an open position.
+        """Update MAE/MFE and enhanced trade metrics for an open position.
+
+        Tracks Maximum Adverse Excursion, Maximum Favorable Excursion,
+        Before-MAE MFE (BMFE), per-trade max drawdown, and profitable days.
 
         Args:
-            asset: Asset symbol
-            current_price: Current market price
-
-        Note:
-            Should be called on each bar while position is open.
+            asset: Asset symbol.
+            current_price: Current market price.
         """
         if asset not in self.open_positions:
             return
@@ -208,16 +216,28 @@ class TradeTracker:
         entry_price = position["entry_price"]
         direction = position["direction"]
 
-        # Calculate unrealized P&L
         unrealized_pnl = current_price - entry_price if direction == "long" else entry_price - current_price
+        unrealized_pct = unrealized_pnl / entry_price if entry_price != 0 else 0.0
 
-        # Update MAE (most negative P&L seen)
-        if unrealized_pnl < position["mae"]:
-            position["mae"] = unrealized_pnl
+        # Update MAE — snapshot MFE as BMFE when MAE worsens
+        if unrealized_pct < position["mae"]:
+            position["mae"] = unrealized_pct
+            position["bmfe"] = position["mfe"]
 
-        # Update MFE (most positive P&L seen)
-        if unrealized_pnl > position["mfe"]:
-            position["mfe"] = unrealized_pnl
+        # Update MFE
+        if unrealized_pct > position["mfe"]:
+            position["mfe"] = unrealized_pct
+
+        # Per-trade MDD
+        if unrealized_pct > position["peak_pnl"]:
+            position["peak_pnl"] = unrealized_pct
+        drawdown = unrealized_pct - position["peak_pnl"]
+        if drawdown < position["trade_mdd"]:
+            position["trade_mdd"] = drawdown
+
+        # Profitable days count
+        if unrealized_pct > 0:
+            position["pdays"] += 1
 
     def on_position_increased(self, asset: str, added_size: float, price: float, commission: float) -> None:
         """Update average entry price when position size increases.
@@ -288,6 +308,9 @@ class TradeTracker:
                 exit_commission=commission,
                 mae=entry_info.get("mae"),
                 mfe=entry_info.get("mfe"),
+                bmfe=entry_info.get("bmfe"),
+                trade_mdd=entry_info.get("trade_mdd"),
+                pdays=entry_info.get("pdays"),
             )
 
             self.trades.append(trade)
@@ -315,6 +338,9 @@ class TradeTracker:
                 exit_commission=commission,
                 mae=entry_info.get("mae"),
                 mfe=entry_info.get("mfe"),
+                bmfe=entry_info.get("bmfe"),
+                trade_mdd=entry_info.get("trade_mdd"),
+                pdays=entry_info.get("pdays"),
             )
 
             self.trades.append(trade)
@@ -396,6 +422,9 @@ class TradeTracker:
                     "bars_held": pl.Int64,
                     "mae": pl.Float64,
                     "mfe": pl.Float64,
+                    "bmfe": pl.Float64,
+                    "trade_mdd": pl.Float64,
+                    "pdays": pl.Int64,
                 }
             )
 
@@ -424,6 +453,9 @@ class TradeTracker:
                     "bars_held": trade.bars_held,
                     "mae": trade.mae,
                     "mfe": trade.mfe,
+                    "bmfe": trade.bmfe,
+                    "trade_mdd": trade.trade_mdd,
+                    "pdays": trade.pdays,
                 }
             )
 
@@ -444,6 +476,10 @@ class TradeTracker:
         total_wins = sum(t.pnl for t in winners)
         total_losses = abs(sum(t.pnl for t in losers))
 
+        bmfe_values = [t.bmfe for t in self.trades if t.bmfe is not None]
+        mdd_values = [t.trade_mdd for t in self.trades if t.trade_mdd is not None]
+        pdays_values = [t.pdays for t in self.trades if t.pdays is not None]
+
         return TradeStats(
             total_trades=len(self.trades),
             winning_trades=len(winners),
@@ -454,4 +490,7 @@ class TradeTracker:
             avg_pnl=sum(t.pnl for t in self.trades) / len(self.trades),
             profit_factor=total_wins / total_losses if total_losses > 0 else float("inf"),
             total_pnl=sum(t.pnl for t in self.trades),
+            avg_bmfe=sum(bmfe_values) / len(bmfe_values) if bmfe_values else 0.0,
+            avg_trade_mdd=sum(mdd_values) / len(mdd_values) if mdd_values else 0.0,
+            avg_pdays=sum(pdays_values) / len(pdays_values) if pdays_values else 0.0,
         )

@@ -14,6 +14,7 @@ from polarbt.analysis import (
     LookAheadResult,
     MonteCarloResult,
     PermutationTestResult,
+    compute_next_actions,
     detect_look_ahead_bias,
     monte_carlo,
     permutation_test,
@@ -48,6 +49,7 @@ from polarbt.sizers import (
     VolatilitySizer,
 )
 from polarbt.trades import Trade, TradeTracker
+from polarbt.weight_backtest import WeightBacktestResult, backtest_weights
 
 try:
     from polarbt import plotting
@@ -63,6 +65,7 @@ __all__ = [
     "BacktestContext",
     "backtest",
     "backtest_batch",
+    "backtest_weights",
     "optimize",
     "optimize_multi",
     "optimize_bayesian",
@@ -76,6 +79,7 @@ __all__ = [
     "OrderStatus",
     "Trade",
     "TradeTracker",
+    "WeightBacktestResult",
     "Sizer",
     "FixedSizer",
     "PercentSizer",
@@ -91,6 +95,7 @@ __all__ = [
     "CustomCommission",
     "analysis",
     "data",
+    "compute_next_actions",
     "monte_carlo",
     "detect_look_ahead_bias",
     "permutation_test",

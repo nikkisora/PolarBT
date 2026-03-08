@@ -101,6 +101,7 @@ Engine(
     daily_loss_limit=None,
     leverage=1.0,
     maintenance_margin=None,
+    factor_column=None,
 )
 ```
 
@@ -126,7 +127,7 @@ Dataclass representing an order with fields: `order_id`, `asset`, `size`, `order
 
 ### `Trade`
 
-Dataclass with fields: `trade_id`, `asset`, `direction`, `entry_bar`, `entry_timestamp`, `entry_price`, `entry_size`, `entry_value`, `entry_commission`, `exit_bar`, `exit_timestamp`, `exit_price`, `exit_size`, `exit_value`, `exit_commission`, `pnl`, `pnl_pct`, `return_pct`, `bars_held`, `mae`, `mfe`, `tags`.
+Dataclass with fields: `trade_id`, `asset`, `direction`, `entry_bar`, `entry_timestamp`, `entry_price`, `entry_size`, `entry_value`, `entry_commission`, `exit_bar`, `exit_timestamp`, `exit_price`, `exit_size`, `exit_value`, `exit_commission`, `pnl`, `pnl_pct`, `return_pct`, `bars_held`, `mae` (percentage), `mfe` (percentage), `bmfe` (best MFE before MAE), `trade_mdd` (max drawdown during trade), `pdays` (profitable days ratio), `tags`.
 
 ### `TradeTracker`
 
@@ -217,6 +218,7 @@ Returns: `total_return`, `cagr`, `sharpe_ratio`, `sortino_ratio`, `calmar_ratio`
 | `drawdown_duration_stats(equity_df)` | Max/avg duration, count |
 | `monthly_returns(equity_df)` | Monthly returns table |
 | `trade_level_metrics(trades)` | Expectancy, SQN, Kelly, streaks |
+| `liquidity_metrics(trades, ohlcv_df)` | Buy-high ratio, sell-low ratio, capacity estimate |
 
 ## Commission Models (`polarbt.commissions`)
 
@@ -307,6 +309,46 @@ All return `plotly.graph_objects.Figure`. Use `save_html="file.html"` to export.
 |---|---|
 | `resample_ohlcv(df, interval)` | Resample OHLCV to larger timeframe |
 
+## Weight-Based Backtesting (`polarbt.weight_backtest`)
+
+### `backtest_weights(data, ...) -> WeightBacktestResult`
+
+Declarative portfolio backtest driven by target weights.
+
+```python
+backtest_weights(
+    data,                          # long-format DataFrame (date, symbol, close, weight)
+    date_col="date",
+    symbol_col="symbol",
+    price_col="close",
+    weight_col="weight",
+    open_col="open",               # for touched exit
+    high_col="high",
+    low_col="low",
+    resample="M",                  # "D", "W", "W-FRI", "M", "Q", "Y", or None
+    resample_offset=None,          # e.g. "2d", "1W"
+    fee_ratio=0.001,
+    tax_ratio=0.0,
+    stop_loss=None,                # per-position stop-loss (e.g. 0.10 = 10%)
+    take_profit=None,              # per-position take-profit
+    trail_stop=None,               # trailing stop distance
+    position_limit=1.0,            # max absolute weight per symbol
+    touched_exit=False,            # use OHLC for intraday stop detection
+    t_plus=1,                      # execution delay in bars
+    initial_capital=100_000.0,
+    factor_col=None,               # price adjustment factor column
+)
+```
+
+### `WeightBacktestResult`
+
+| Attribute | Type | Description |
+|---|---|---|
+| `equity` | `pl.DataFrame` | Columns: `date`, `cumulative_return` |
+| `trades` | `pl.DataFrame` | Per-trade details (symbol, entry/exit dates, prices, return) |
+| `metrics` | `BacktestMetrics` | Standard performance metrics |
+| `next_actions` | `pl.DataFrame \| None` | Forward-looking rebalance actions (symbol, action, current_weight, target_weight) |
+
 ## Advanced Analysis (`polarbt.analysis`)
 
 | Function | Description |
@@ -314,6 +356,7 @@ All return `plotly.graph_objects.Figure`. Use `save_html="file.html"` to export.
 | `monte_carlo(trades, initial_capital, n_simulations, confidence_level, seed)` | Monte Carlo simulation on trade P&Ls |
 | `detect_look_ahead_bias(strategy, data, sample_bars, tolerance)` | Detect future data leaks in preprocess() |
 | `permutation_test(strategy_class, data, metric, n_permutations, seed, ...)` | Statistical significance test |
+| `compute_next_actions(current_positions, target_weights, portfolio_value, current_prices)` | Forward-looking rebalance actions |
 
 ## TA-Lib Integration (`polarbt.integrations.talib`)
 

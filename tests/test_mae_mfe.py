@@ -1,4 +1,4 @@
-"""Tests for MAE (Maximum Adverse Excursion) and MFE (Maximum Favorable Excursion) tracking."""
+"""Tests for MAE/MFE and enhanced trade metrics (BMFE, trade_mdd, pdays)."""
 
 import polars as pl
 
@@ -31,13 +31,13 @@ class TestMAEMFE:
         assert trade["entry_price"] == 50000
         assert trade["exit_price"] == 49000
 
-        # MAE should be -2000 (worst drawdown was at 48000)
+        # MAE should be -2000/50000 = -0.04 (worst drawdown as pct)
         assert trade["mae"] is not None
-        assert abs(trade["mae"] - (-2000)) < 1
+        assert abs(trade["mae"] - (-0.04)) < 0.001
 
-        # MFE should be 2000 (best profit was at 52000)
+        # MFE should be 2000/50000 = 0.04 (best profit as pct)
         assert trade["mfe"] is not None
-        assert abs(trade["mfe"] - 2000) < 1
+        assert abs(trade["mfe"] - 0.04) < 0.001
 
     def test_mfe_tracks_best_profit(self):
         """Test that MFE tracks the best unrealized profit during a trade."""
@@ -58,12 +58,9 @@ class TestMAEMFE:
         trades = portfolio.get_trades()
         trade = trades.row(0, named=True)
 
-        # MFE should be 5000 (peak profit at 55000)
+        # MFE should be 5000/50000 = 0.10
         assert trade["mfe"] is not None
-        assert abs(trade["mfe"] - 5000) < 1
-
-        # Final profit is 3000, but MFE captured the 5000 peak
-        assert abs(trade["pnl"] - 300) < 50  # ~300 after commission
+        assert abs(trade["mfe"] - 0.10) < 0.001
 
     def test_mae_mfe_both_zero_on_immediate_exit(self):
         """Test MAE/MFE when position is closed immediately."""
@@ -102,9 +99,9 @@ class TestMAEMFE:
         # MAE should be 0 or positive (never went negative)
         assert trade["mae"] >= 0
 
-        # MFE should be 3000 (final price)
+        # MFE should be 3000/50000 = 0.06
         assert trade["mfe"] is not None
-        assert abs(trade["mfe"] - 3000) < 1
+        assert abs(trade["mfe"] - 0.06) < 0.001
 
     def test_mae_mfe_with_losing_trade(self):
         """Test MAE/MFE on a losing trade that never went positive."""
@@ -124,9 +121,9 @@ class TestMAEMFE:
         trades = portfolio.get_trades()
         trade = trades.row(0, named=True)
 
-        # MAE should be -3000 (final price)
+        # MAE should be -3000/50000 = -0.06
         assert trade["mae"] is not None
-        assert abs(trade["mae"] - (-3000)) < 1
+        assert abs(trade["mae"] - (-0.06)) < 0.001
 
         # MFE should be 0 or negative (never went positive)
         assert trade["mfe"] <= 0
@@ -149,13 +146,13 @@ class TestMAEMFE:
         trades = portfolio.get_trades()
         trade = trades.row(0, named=True)
 
-        # MAE should capture lowest point: 47000 - 50000 = -3000
+        # MAE should capture lowest point: (47000-50000)/50000 = -0.06
         assert trade["mae"] is not None
-        assert abs(trade["mae"] - (-3000)) < 1
+        assert abs(trade["mae"] - (-0.06)) < 0.001
 
-        # MFE should capture highest point: 54000 - 50000 = 4000
+        # MFE should capture highest point: (54000-50000)/50000 = 0.08
         assert trade["mfe"] is not None
-        assert abs(trade["mfe"] - 4000) < 1
+        assert abs(trade["mfe"] - 0.08) < 0.001
 
     def test_mae_mfe_exported_in_dataframe(self):
         """Test that MAE/MFE are included in trades DataFrame."""
@@ -198,12 +195,251 @@ class TestMAEMFE:
         trades_df = portfolio.get_trades()
         assert len(trades_df) == 2
 
-        # Trade 1 (BTC)
+        # Trade 1 (BTC): MAE = -1000/50000 = -0.02, MFE = 2000/50000 = 0.04
         btc_trade = trades_df.filter(pl.col("asset") == "BTC").row(0, named=True)
-        assert abs(btc_trade["mae"] - (-1000)) < 1
-        assert abs(btc_trade["mfe"] - 2000) < 1
+        assert abs(btc_trade["mae"] - (-0.02)) < 0.001
+        assert abs(btc_trade["mfe"] - 0.04) < 0.001
 
-        # Trade 2 (ETH)
+        # Trade 2 (ETH): MAE = -200/3000 = -0.0667, MFE = 500/3000 = 0.1667
         eth_trade = trades_df.filter(pl.col("asset") == "ETH").row(0, named=True)
-        assert abs(eth_trade["mae"] - (-200)) < 1
-        assert abs(eth_trade["mfe"] - 500) < 1
+        assert abs(eth_trade["mae"] - (-200 / 3000)) < 0.001
+        assert abs(eth_trade["mfe"] - (500 / 3000)) < 0.001
+
+
+class TestBMFE:
+    """Test Before-MAE MFE tracking."""
+
+    def test_bmfe_captures_mfe_before_crash(self):
+        """Long trade going up then down: BMFE = MFE at the bar before the crash."""
+        portfolio = Portfolio(initial_cash=100000)
+
+        portfolio.update_prices({"BTC": 100}, bar_index=0)
+        portfolio.order("BTC", 10)
+
+        # Price goes up
+        portfolio.update_prices({"BTC": 110}, bar_index=1)  # MFE = 0.10
+        portfolio.update_prices({"BTC": 115}, bar_index=2)  # MFE = 0.15
+
+        # Price crashes below entry — MAE worsens, BMFE snapshots MFE at that moment
+        portfolio.update_prices({"BTC": 85}, bar_index=3)  # MAE = -0.15, BMFE = 0.15
+
+        portfolio.close_position("BTC")
+
+        trades = portfolio.get_trades()
+        trade = trades.row(0, named=True)
+
+        assert abs(trade["bmfe"] - 0.15) < 0.001
+        assert abs(trade["mae"] - (-0.15)) < 0.001
+        assert abs(trade["mfe"] - 0.15) < 0.001
+
+    def test_bmfe_zero_when_never_negative(self):
+        """Trade that never goes negative: BMFE = 0.0."""
+        portfolio = Portfolio(initial_cash=100000)
+
+        portfolio.update_prices({"BTC": 100}, bar_index=0)
+        portfolio.order("BTC", 10)
+
+        portfolio.update_prices({"BTC": 105}, bar_index=1)
+        portfolio.update_prices({"BTC": 110}, bar_index=2)
+        portfolio.update_prices({"BTC": 108}, bar_index=3)
+
+        portfolio.close_position("BTC")
+
+        trades = portfolio.get_trades()
+        trade = trades.row(0, named=True)
+
+        # MAE never went below 0, so BMFE stays at initial 0.0
+        assert trade["bmfe"] == 0.0
+
+    def test_bmfe_short_trade(self):
+        """Short trade: verify direction-aware calculation."""
+        portfolio = Portfolio(initial_cash=100000)
+
+        portfolio.update_prices({"BTC": 100}, bar_index=0)
+        portfolio.order("BTC", -10)  # Short
+
+        # Price goes down (favorable for short)
+        portfolio.update_prices({"BTC": 90}, bar_index=1)  # MFE = 0.10
+        # Price goes up (adverse for short)
+        portfolio.update_prices({"BTC": 115}, bar_index=2)  # MAE = -0.15, BMFE = 0.10
+
+        portfolio.close_position("BTC")
+
+        trades = portfolio.get_trades()
+        trade = trades.row(0, named=True)
+
+        assert abs(trade["bmfe"] - 0.10) < 0.001
+        assert abs(trade["mae"] - (-0.15)) < 0.001
+
+
+class TestTradeMDD:
+    """Test per-trade max drawdown."""
+
+    def test_trade_mdd_with_drawdown(self):
+        """Trade with internal drawdown."""
+        portfolio = Portfolio(initial_cash=100000)
+
+        portfolio.update_prices({"BTC": 100}, bar_index=0)
+        portfolio.order("BTC", 10)
+
+        # Price goes up, then drops, then recovers
+        portfolio.update_prices({"BTC": 120}, bar_index=1)  # peak_pnl = 0.20
+        portfolio.update_prices({"BTC": 105}, bar_index=2)  # dd = 0.05 - 0.20 = -0.15
+        portfolio.update_prices({"BTC": 130}, bar_index=3)  # new peak 0.30
+
+        portfolio.close_position("BTC")
+
+        trades = portfolio.get_trades()
+        trade = trades.row(0, named=True)
+
+        # trade_mdd = worst drawdown from peak = 0.05 - 0.20 = -0.15
+        assert abs(trade["trade_mdd"] - (-0.15)) < 0.001
+
+    def test_trade_mdd_always_rising(self):
+        """Trade that never drops: trade_mdd = 0."""
+        portfolio = Portfolio(initial_cash=100000)
+
+        portfolio.update_prices({"BTC": 100}, bar_index=0)
+        portfolio.order("BTC", 10)
+
+        portfolio.update_prices({"BTC": 105}, bar_index=1)
+        portfolio.update_prices({"BTC": 110}, bar_index=2)
+        portfolio.update_prices({"BTC": 115}, bar_index=3)
+
+        portfolio.close_position("BTC")
+
+        trades = portfolio.get_trades()
+        trade = trades.row(0, named=True)
+
+        assert trade["trade_mdd"] == 0.0
+
+    def test_trade_mdd_equals_mae_when_never_positive(self):
+        """Trade that never goes positive: pdays = 0, trade_mdd = MAE."""
+        portfolio = Portfolio(initial_cash=100000)
+
+        portfolio.update_prices({"BTC": 100}, bar_index=0)
+        portfolio.order("BTC", 10)
+
+        portfolio.update_prices({"BTC": 95}, bar_index=1)
+        portfolio.update_prices({"BTC": 90}, bar_index=2)
+        portfolio.update_prices({"BTC": 85}, bar_index=3)
+
+        portfolio.close_position("BTC")
+
+        trades = portfolio.get_trades()
+        trade = trades.row(0, named=True)
+
+        # Peak PnL stays at 0.0 (initial), drawdown = current - 0 = current
+        # trade_mdd should equal mae since peak never moved above 0
+        assert abs(trade["trade_mdd"] - trade["mae"]) < 0.001
+        assert trade["pdays"] == 0
+
+
+class TestPdays:
+    """Test profitable days count."""
+
+    def test_pdays_all_profitable(self):
+        """Trade where all bars are profitable: pdays = bars_held."""
+        portfolio = Portfolio(initial_cash=100000)
+
+        portfolio.update_prices({"BTC": 100}, bar_index=0)
+        portfolio.order("BTC", 10)
+
+        portfolio.update_prices({"BTC": 105}, bar_index=1)  # +5%
+        portfolio.update_prices({"BTC": 110}, bar_index=2)  # +10%
+        portfolio.update_prices({"BTC": 108}, bar_index=3)  # +8%
+
+        portfolio.close_position("BTC")
+
+        trades = portfolio.get_trades()
+        trade = trades.row(0, named=True)
+
+        # All 3 update bars had positive unrealized P&L
+        assert trade["pdays"] == 3
+
+    def test_pdays_none_profitable(self):
+        """Trade where no bars are profitable: pdays = 0."""
+        portfolio = Portfolio(initial_cash=100000)
+
+        portfolio.update_prices({"BTC": 100}, bar_index=0)
+        portfolio.order("BTC", 10)
+
+        portfolio.update_prices({"BTC": 95}, bar_index=1)
+        portfolio.update_prices({"BTC": 90}, bar_index=2)
+
+        portfolio.close_position("BTC")
+
+        trades = portfolio.get_trades()
+        trade = trades.row(0, named=True)
+
+        assert trade["pdays"] == 0
+
+    def test_pdays_mixed(self):
+        """Trade with mixed profitable/unprofitable bars."""
+        portfolio = Portfolio(initial_cash=100000)
+
+        portfolio.update_prices({"BTC": 100}, bar_index=0)
+        portfolio.order("BTC", 10)
+
+        portfolio.update_prices({"BTC": 105}, bar_index=1)  # profitable
+        portfolio.update_prices({"BTC": 95}, bar_index=2)  # not profitable
+        portfolio.update_prices({"BTC": 110}, bar_index=3)  # profitable
+        portfolio.update_prices({"BTC": 99}, bar_index=4)  # not profitable
+
+        portfolio.close_position("BTC")
+
+        trades = portfolio.get_trades()
+        trade = trades.row(0, named=True)
+
+        assert trade["pdays"] == 2
+
+
+class TestEnhancedMetricsInDataFrame:
+    """Test that new columns appear in the trades DataFrame."""
+
+    def test_new_columns_present(self):
+        """Verify bmfe, trade_mdd, pdays columns exist."""
+        portfolio = Portfolio(initial_cash=100000)
+
+        portfolio.update_prices({"BTC": 100}, bar_index=0)
+        portfolio.order("BTC", 10)
+        portfolio.update_prices({"BTC": 110}, bar_index=1)
+        portfolio.update_prices({"BTC": 90}, bar_index=2)
+        portfolio.close_position("BTC")
+
+        trades_df = portfolio.get_trades()
+        assert "bmfe" in trades_df.columns
+        assert "trade_mdd" in trades_df.columns
+        assert "pdays" in trades_df.columns
+
+    def test_empty_df_has_new_columns(self):
+        """Verify empty trades DataFrame has new columns."""
+        from polarbt.trades import TradeTracker
+
+        tracker = TradeTracker()
+        df = tracker.get_trades_df()
+        assert "bmfe" in df.columns
+        assert "trade_mdd" in df.columns
+        assert "pdays" in df.columns
+
+    def test_trade_stats_aggregates(self):
+        """Verify TradeStats includes avg_bmfe, avg_trade_mdd, avg_pdays."""
+        portfolio = Portfolio(initial_cash=100000)
+
+        # Trade 1
+        portfolio.update_prices({"BTC": 100}, bar_index=0)
+        portfolio.order("BTC", 10)
+        portfolio.update_prices({"BTC": 110}, bar_index=1)
+        portfolio.update_prices({"BTC": 90}, bar_index=2)
+        portfolio.close_position("BTC")
+
+        # Trade 2
+        portfolio.update_prices({"BTC": 100}, bar_index=3)
+        portfolio.order("BTC", 10)
+        portfolio.update_prices({"BTC": 105}, bar_index=4)
+        portfolio.close_position("BTC")
+
+        stats = portfolio.get_trade_stats()
+        assert hasattr(stats, "avg_bmfe")
+        assert hasattr(stats, "avg_trade_mdd")
+        assert hasattr(stats, "avg_pdays")

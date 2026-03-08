@@ -108,6 +108,7 @@ _OHLCV_ALIASES: dict[str, list[str]] = {
     "low": ["Low", "LOW", "low_price", "Low_Price"],
     "close": ["Close", "CLOSE", "close_price", "Close_Price", "adj_close", "Adj_Close", "Adj Close"],
     "volume": ["Volume", "VOLUME", "vol", "Vol"],
+    "factor": ["Factor", "FACTOR", "adj_factor", "Adj_Factor", "split_factor"],
 }
 
 
@@ -277,6 +278,7 @@ class Portfolio:
         leverage: float = 1.0,
         maintenance_margin: float | None = None,
         fractional_shares: bool = True,
+        factor_column: str | None = None,
     ):
         """
         Initialize a new portfolio.
@@ -356,6 +358,10 @@ class Portfolio:
         self.maintenance_margin = maintenance_margin
         self._margin_called: bool = False
         self.fractional_shares = fractional_shares
+        self.factor_column = factor_column
+
+        # Factor tracking for commission calculation on raw prices
+        self._factors: dict[str, float] = {}
 
         # Risk limit state
         self._peak_equity: float = initial_cash
@@ -430,14 +436,13 @@ class Portfolio:
             if asset in prices:
                 self.trade_tracker.update_mae_mfe(asset, prices[asset])
 
-        # Check and execute stop-loss orders first
-        self._check_stop_losses()
-
-        # Check and execute take-profit orders
-        self._check_take_profits()
-
-        # Update and check trailing stops (combined to avoid intra-bar issues)
-        self._update_and_check_trailing_stops()
+        # Use priority-based stop checking when OHLC data is available
+        if self._current_ohlc:
+            self._check_stops_with_priority()
+        else:
+            self._check_stop_losses()
+            self._check_take_profits()
+            self._update_and_check_trailing_stops()
 
         # Check and expire orders that have exceeded their valid_until time
         self._check_order_expiry()
@@ -777,9 +782,11 @@ class Portfolio:
         old_gross = size * old_exec_price
         new_gross = size * new_exec_price
 
-        # Recalculate commission on new gross
+        # Recalculate commission on new gross (use raw price if factor available)
         old_commission = order.commission_paid
-        new_commission = self.commission_model.calculate(size, new_exec_price)
+        factor = self._factors.get(order.asset, 1.0)
+        raw_new_exec_price = new_exec_price / factor if factor != 0 else new_exec_price
+        new_commission = self.commission_model.calculate(size, raw_new_exec_price)
 
         if order.is_buy():
             # Buying: cash was decreased by old cost, needs to be decreased by new cost
@@ -856,6 +863,120 @@ class Portfolio:
                 self._close_at_price(asset, target_price)
                 if asset in self._take_profits:
                     del self._take_profits[asset]
+
+    def _check_stops_with_priority(self) -> None:
+        """Check all stop conditions with OHLC priority: open > high > low.
+
+        For each asset with active stops:
+        1. If open breaches any stop -> exit at open price (gap scenario)
+        2. If high breaches take-profit (long) or stop-loss (short) -> exit at threshold
+        3. If low breaches stop-loss (long) or take-profit (short) -> exit at threshold
+
+        Only one exit per asset per bar. First match wins.
+        """
+        assets_to_check: set[str] = set()
+        assets_to_check.update(self._stop_losses.keys())
+        assets_to_check.update(self._take_profits.keys())
+        assets_to_check.update(self._trailing_stops.keys())
+
+        for asset in list(assets_to_check):
+            if asset not in self.positions:
+                continue
+
+            ohlc = self._current_ohlc.get(asset, {})
+            close_price = self._current_prices.get(asset, 0.0)
+            open_price = ohlc.get("open", close_price)
+            high_price = ohlc.get("high", open_price)
+            low_price = ohlc.get("low", open_price)
+
+            position_size = self.positions[asset]
+            is_long = position_size > 0
+
+            # Gather stop prices
+            sl_info = self._stop_losses.get(asset)
+            stop_price = sl_info["stop_price"] if sl_info else None
+
+            tp_info = self._take_profits.get(asset)
+            tp_price = tp_info["target_price"] if tp_info else None
+
+            trail_info = self._trailing_stops.get(asset)
+            trail_stop_price = trail_info["stop_price"] if trail_info else None
+
+            # Effective stop = tightest of fixed stop and trailing stop
+            effective_stop: float | None = None
+            if is_long:
+                candidates = [p for p in [stop_price, trail_stop_price] if p is not None]
+                effective_stop = max(candidates) if candidates else None
+            else:
+                candidates = [p for p in [stop_price, trail_stop_price] if p is not None]
+                effective_stop = min(candidates) if candidates else None
+
+            exited = False
+
+            # Priority 1: Open breaches
+            if effective_stop is not None and (
+                (is_long and open_price <= effective_stop) or (not is_long and open_price >= effective_stop)
+            ):
+                self._close_at_price(asset, open_price)
+                self._cleanup_stops(asset)
+                exited = True
+
+            if (
+                not exited
+                and tp_price is not None
+                and ((is_long and open_price >= tp_price) or (not is_long and open_price <= tp_price))
+            ):
+                self._close_at_price(asset, open_price)
+                self._cleanup_stops(asset)
+                exited = True
+
+            if exited:
+                continue
+
+            # Priority 2: High breaches (TP for long, SL for short)
+            if is_long and tp_price is not None and high_price >= tp_price:
+                self._close_at_price(asset, tp_price)
+                self._cleanup_stops(asset)
+                continue
+            if not is_long and effective_stop is not None and high_price >= effective_stop:
+                self._close_at_price(asset, effective_stop)
+                self._cleanup_stops(asset)
+                continue
+
+            # Priority 3: Low breaches (SL for long, TP for short)
+            if is_long and effective_stop is not None and low_price <= effective_stop:
+                self._close_at_price(asset, effective_stop)
+                self._cleanup_stops(asset)
+                continue
+            if not is_long and tp_price is not None and low_price <= tp_price:
+                self._close_at_price(asset, tp_price)
+                self._cleanup_stops(asset)
+                continue
+
+            # No exit triggered — update trailing stop high-water mark
+            if trail_info is not None:
+                current_price = self._current_prices.get(asset)
+                if current_price is not None:
+                    trail_pct = trail_info["trail_pct"]
+                    trail_amount = trail_info["trail_amount"]
+                    if is_long and high_price > trail_info["highest_price"]:
+                        trail_info["highest_price"] = high_price
+                        if trail_pct is not None:
+                            trail_info["stop_price"] = high_price * (1 - trail_pct)
+                        elif trail_amount is not None:
+                            trail_info["stop_price"] = high_price - trail_amount
+                    elif not is_long and low_price < trail_info["highest_price"]:
+                        trail_info["highest_price"] = low_price
+                        if trail_pct is not None:
+                            trail_info["stop_price"] = low_price * (1 + trail_pct)
+                        elif trail_amount is not None:
+                            trail_info["stop_price"] = low_price + trail_amount
+
+    def _cleanup_stops(self, asset: str) -> None:
+        """Remove all stop-related state for an asset after exit."""
+        self._stop_losses.pop(asset, None)
+        self._take_profits.pop(asset, None)
+        self._trailing_stops.pop(asset, None)
 
     def _execute_pending_orders(self) -> None:
         """Execute orders that are due."""
@@ -1077,8 +1198,11 @@ class Portfolio:
         )
 
         # Calculate costs via commission model
+        # When a factor column is configured, commissions are based on raw (unadjusted) prices
+        factor = self._factors.get(order.asset, 1.0)
+        raw_execution_price = execution_price / factor if factor != 0 else execution_price
         gross_cost = abs(order.size) * execution_price
-        commission_cost = self.commission_model.calculate(abs(order.size), execution_price, is_reversal)
+        commission_cost = self.commission_model.calculate(abs(order.size), raw_execution_price, is_reversal)
 
         # Check if order can be afforded (margin-aware for leveraged accounts)
         if order.is_buy():
@@ -2211,6 +2335,7 @@ class Engine:
         leverage: float = 1.0,
         maintenance_margin: float | None = None,
         fractional_shares: bool = True,
+        factor_column: str | None = None,
     ):
         """
         Initialize the backtesting engine.
@@ -2236,6 +2361,8 @@ class Engine:
             leverage: Maximum leverage multiplier (e.g., 2.0 = 2x leverage). Default 1.0.
             maintenance_margin: Minimum margin ratio before margin call (e.g., 0.25 = 25%). Default None.
             fractional_shares: Whether to allow fractional share quantities (default True).
+            factor_column: Optional column name for price adjustment factor. When set,
+                          commissions are calculated on raw prices (adjusted_price / factor).
         """
         self.strategy = strategy
         self.initial_cash = initial_cash
@@ -2250,6 +2377,7 @@ class Engine:
         self.leverage = leverage
         self.maintenance_margin = maintenance_margin
         self.fractional_shares = fractional_shares
+        self.factor_column = factor_column
 
         # Validate warmup parameter
         if isinstance(warmup, str):
@@ -2356,6 +2484,7 @@ class Engine:
             leverage=self.leverage,
             maintenance_margin=self.maintenance_margin,
             fractional_shares=self.fractional_shares,
+            factor_column=self.factor_column,
         )
 
         # Preprocess data using strategy
@@ -2426,6 +2555,19 @@ class Engine:
 
             # Get timestamp
             current_timestamp = row_dict.get(timestamp_col)
+
+            # Update factor data for commission calculation on raw prices
+            if self.factor_column is not None:
+                for asset in self.price_columns:
+                    # Support both prefixed (BTC_factor) and unprefixed (factor) format
+                    if asset == "asset":
+                        factor_val = row_dict.get(self.factor_column)
+                    else:
+                        factor_val = row_dict.get(f"{asset}_{self.factor_column}")
+                        if factor_val is None:
+                            factor_val = row_dict.get(self.factor_column)
+                    if factor_val is not None:
+                        self.portfolio._factors[asset] = float(factor_val)
 
             # Update portfolio with current prices and OHLC data
             self.portfolio.update_prices(current_prices, idx, ohlc_data, current_timestamp)
@@ -2541,5 +2683,11 @@ class Engine:
             metrics["expectancy"] = 0.0
             metrics["sqn"] = 0.0
             metrics["kelly_criterion"] = 0.0
+
+        # Liquidity metrics (Feature 4) — only if relevant columns exist
+        from polarbt.metrics import liquidity_metrics
+
+        liq = liquidity_metrics(trades_df, self.data)
+        metrics.update({k: v for k, v in liq.items() if v is not None})
 
         return _backtest_metrics_from_dict(metrics, trade_stats)

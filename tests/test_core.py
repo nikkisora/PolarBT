@@ -499,3 +499,397 @@ class TestParam:
         results = engine.run()
         assert results is not None
         assert results.total_return is not None
+
+
+class TestTouchedExitPriority:
+    """Test OHLC priority-based stop checking (Feature 5)."""
+
+    def test_gap_down_through_stop_loss_exits_at_open(self):
+        """Gap down through stop-loss: open < stop -> exit at open, not stop price."""
+        portfolio = Portfolio(initial_cash=100_000)
+
+        # Enter long at 100
+        portfolio.update_prices(
+            {"BTC": 100},
+            bar_index=0,
+            ohlc_data={"BTC": {"open": 100, "high": 100, "low": 100, "close": 100}},
+        )
+        portfolio.order("BTC", 10)
+        portfolio.set_stop_loss("BTC", stop_price=90)
+
+        # Bar 1: gap down to 80, below stop of 90
+        portfolio.update_prices(
+            {"BTC": 82},
+            bar_index=1,
+            ohlc_data={"BTC": {"open": 80, "high": 85, "low": 78, "close": 82}},
+        )
+
+        # Position should be closed
+        assert portfolio.get_position("BTC") == 0
+        # Should have exited at open price (80), not stop price (90)
+        trades = portfolio.get_trades()
+        assert len(trades) == 1
+        assert trades["exit_price"][0] == 80
+
+    def test_gap_up_through_take_profit_exits_at_open(self):
+        """Gap up through take-profit: open > TP -> exit at open, not TP price."""
+        portfolio = Portfolio(initial_cash=100_000)
+
+        # Enter long at 100
+        portfolio.update_prices(
+            {"BTC": 100},
+            bar_index=0,
+            ohlc_data={"BTC": {"open": 100, "high": 100, "low": 100, "close": 100}},
+        )
+        portfolio.order("BTC", 10)
+        portfolio.set_take_profit("BTC", target_price=110)
+
+        # Bar 1: gap up to 120, above TP of 110
+        portfolio.update_prices(
+            {"BTC": 118},
+            bar_index=1,
+            ohlc_data={"BTC": {"open": 120, "high": 125, "low": 115, "close": 118}},
+        )
+
+        # Position should be closed at open price (120)
+        assert portfolio.get_position("BTC") == 0
+        trades = portfolio.get_trades()
+        assert len(trades) == 1
+        assert trades["exit_price"][0] == 120
+
+    def test_normal_stop_loss_trigger_exits_at_stop_price(self):
+        """Normal SL trigger: low touches stop but open is above -> exit at stop price."""
+        portfolio = Portfolio(initial_cash=100_000)
+
+        # Enter long at 100
+        portfolio.update_prices(
+            {"BTC": 100},
+            bar_index=0,
+            ohlc_data={"BTC": {"open": 100, "high": 100, "low": 100, "close": 100}},
+        )
+        portfolio.order("BTC", 10)
+        portfolio.set_stop_loss("BTC", stop_price=90)
+
+        # Bar 1: open at 95 (above stop), low touches 88 (below stop)
+        portfolio.update_prices(
+            {"BTC": 92},
+            bar_index=1,
+            ohlc_data={"BTC": {"open": 95, "high": 96, "low": 88, "close": 92}},
+        )
+
+        # Position should be closed at stop price (90)
+        assert portfolio.get_position("BTC") == 0
+        trades = portfolio.get_trades()
+        assert len(trades) == 1
+        assert trades["exit_price"][0] == 90
+
+    def test_normal_take_profit_trigger_exits_at_tp_price(self):
+        """Normal TP trigger: high touches TP but open is below -> exit at TP price."""
+        portfolio = Portfolio(initial_cash=100_000)
+
+        # Enter long at 100
+        portfolio.update_prices(
+            {"BTC": 100},
+            bar_index=0,
+            ohlc_data={"BTC": {"open": 100, "high": 100, "low": 100, "close": 100}},
+        )
+        portfolio.order("BTC", 10)
+        portfolio.set_take_profit("BTC", target_price=110)
+
+        # Bar 1: open at 105 (below TP), high touches 112 (above TP)
+        portfolio.update_prices(
+            {"BTC": 108},
+            bar_index=1,
+            ohlc_data={"BTC": {"open": 105, "high": 112, "low": 104, "close": 108}},
+        )
+
+        # Position should be closed at TP price (110)
+        assert portfolio.get_position("BTC") == 0
+        trades = portfolio.get_trades()
+        assert len(trades) == 1
+        assert trades["exit_price"][0] == 110
+
+    def test_both_sl_and_tp_touched_priority_determines_which(self):
+        """Both SL and TP touched in same bar: TP fires first via high priority."""
+        portfolio = Portfolio(initial_cash=100_000)
+
+        # Enter long at 100
+        portfolio.update_prices(
+            {"BTC": 100},
+            bar_index=0,
+            ohlc_data={"BTC": {"open": 100, "high": 100, "low": 100, "close": 100}},
+        )
+        portfolio.order("BTC", 10)
+        portfolio.set_stop_loss("BTC", stop_price=90)
+        portfolio.set_take_profit("BTC", target_price=110)
+
+        # Bar 1: both high > TP and low < SL, open between them
+        # Priority: high (TP for long) checked before low (SL for long)
+        portfolio.update_prices(
+            {"BTC": 100},
+            bar_index=1,
+            ohlc_data={"BTC": {"open": 100, "high": 115, "low": 85, "close": 100}},
+        )
+
+        assert portfolio.get_position("BTC") == 0
+        trades = portfolio.get_trades()
+        assert len(trades) == 1
+        # TP should fire since high is checked before low for long positions
+        assert trades["exit_price"][0] == 110
+
+    def test_no_ohlc_data_uses_existing_behavior(self):
+        """No OHLC data: existing behavior unchanged (close-price checks)."""
+        portfolio = Portfolio(initial_cash=100_000)
+
+        # Enter long at 100
+        portfolio.update_prices({"BTC": 100}, bar_index=0)
+        portfolio.order("BTC", 10)
+        portfolio.set_stop_loss("BTC", stop_price=90)
+
+        # Update with just close price (no OHLC) — falls to 85
+        portfolio.update_prices({"BTC": 85}, bar_index=1)
+
+        # Should still trigger stop
+        assert portfolio.get_position("BTC") == 0
+
+    def test_trailing_stop_with_gap(self):
+        """Trailing stop with gap: verify open-price exit."""
+        portfolio = Portfolio(initial_cash=100_000)
+
+        # Enter long at 100
+        portfolio.update_prices(
+            {"BTC": 100},
+            bar_index=0,
+            ohlc_data={"BTC": {"open": 100, "high": 100, "low": 100, "close": 100}},
+        )
+        portfolio.order("BTC", 10)
+        portfolio.set_trailing_stop("BTC", trail_pct=0.05)
+
+        # Price goes to 120 — trailing stop moves up to 120 * 0.95 = 114
+        portfolio.update_prices(
+            {"BTC": 120},
+            bar_index=1,
+            ohlc_data={"BTC": {"open": 115, "high": 120, "low": 114, "close": 120}},
+        )
+
+        # Verify trailing stop has moved up
+        assert portfolio.get_position("BTC") != 0
+
+        # Gap down below trailing stop of 114
+        portfolio.update_prices(
+            {"BTC": 105},
+            bar_index=2,
+            ohlc_data={"BTC": {"open": 110, "high": 112, "low": 105, "close": 105}},
+        )
+
+        # Should have exited at open price 110 (gap through stop at 114)
+        assert portfolio.get_position("BTC") == 0
+        trades = portfolio.get_trades()
+        assert len(trades) == 1
+        assert trades["exit_price"][0] == 110
+
+    def test_short_position_gap_up_through_stop_loss(self):
+        """Short position: gap up through stop -> exit at open."""
+        portfolio = Portfolio(initial_cash=100_000)
+
+        # Enter short at 100
+        portfolio.update_prices(
+            {"BTC": 100},
+            bar_index=0,
+            ohlc_data={"BTC": {"open": 100, "high": 100, "low": 100, "close": 100}},
+        )
+        portfolio.order("BTC", -10)
+        portfolio.set_stop_loss("BTC", stop_price=110)
+
+        # Gap up to 115 (above stop of 110)
+        portfolio.update_prices(
+            {"BTC": 118},
+            bar_index=1,
+            ohlc_data={"BTC": {"open": 115, "high": 120, "low": 114, "close": 118}},
+        )
+
+        assert portfolio.get_position("BTC") == 0
+        trades = portfolio.get_trades()
+        assert len(trades) == 1
+        # Should exit at open (115), not stop (110)
+        assert trades["exit_price"][0] == 115
+
+
+class TestFactorBasedPriceAdjustment:
+    """Test Feature 7: Factor-based price adjustment for commissions."""
+
+    def test_no_factor_column_unchanged(self):
+        """Without factor_column, behavior is identical to before."""
+        portfolio = Portfolio(initial_cash=100_000, commission=0.01)
+        portfolio.update_prices({"AAPL": 200.0})
+        portfolio.order("AAPL", 100)
+
+        # Commission should be on the adjusted price (200)
+        filled_orders = portfolio.get_orders()
+        order = filled_orders[0]
+        assert order.is_filled()
+        # 100 shares * 200 * 0.01 = 200
+        assert abs(order.commission_paid - 200.0) < 0.01
+
+    def test_factor_column_halves_commission(self):
+        """With factor=2.0, raw_price = adjusted/2, so commission is halved."""
+        portfolio = Portfolio(initial_cash=100_000, commission=0.01, factor_column="factor")
+        portfolio._factors["AAPL"] = 2.0
+        portfolio.update_prices({"AAPL": 200.0})
+        portfolio.order("AAPL", 100)
+
+        filled_orders = portfolio.get_orders()
+        order = filled_orders[0]
+        assert order.is_filled()
+        # raw_price = 200 / 2 = 100, commission = 100 * 100 * 0.01 = 100
+        assert abs(order.commission_paid - 100.0) < 0.01
+
+    def test_factor_of_one_identical(self):
+        """Factor of 1.0 should produce identical results to no factor."""
+        portfolio_no_factor = Portfolio(initial_cash=100_000, commission=0.01)
+        portfolio_no_factor.update_prices({"AAPL": 150.0})
+        portfolio_no_factor.order("AAPL", 50)
+
+        portfolio_with_factor = Portfolio(initial_cash=100_000, commission=0.01, factor_column="factor")
+        portfolio_with_factor._factors["AAPL"] = 1.0
+        portfolio_with_factor.update_prices({"AAPL": 150.0})
+        portfolio_with_factor.order("AAPL", 50)
+
+        orders_no = portfolio_no_factor.get_orders()
+        orders_with = portfolio_with_factor.get_orders()
+        assert abs(orders_no[0].commission_paid - orders_with[0].commission_paid) < 1e-10
+
+    def test_factor_changes_mid_backtest(self):
+        """Factor changing mid-backtest (simulating a 2:1 split)."""
+        portfolio = Portfolio(initial_cash=100_000, commission=0.01, factor_column="factor")
+
+        # Before split: factor=1.0, price=200
+        portfolio._factors["AAPL"] = 1.0
+        portfolio.update_prices({"AAPL": 200.0})
+        portfolio.order("AAPL", 10)
+
+        order1 = portfolio.get_orders()[0]
+        # Commission on raw price 200: 10 * 200 * 0.01 = 20
+        assert abs(order1.commission_paid - 20.0) < 0.01
+
+        # After 2:1 split: factor=2.0, adjusted price=200 (raw=100)
+        portfolio._factors["AAPL"] = 2.0
+        portfolio.update_prices({"AAPL": 200.0}, bar_index=1)
+        portfolio.order("AAPL", 10)
+
+        order2 = portfolio.get_orders()[1]
+        # Commission on raw price 100: 10 * 100 * 0.01 = 10
+        assert abs(order2.commission_paid - 10.0) < 0.01
+
+    def test_engine_with_factor_column(self):
+        """Engine passes factor_column to Portfolio and extracts factor data."""
+
+        class BuyAndHold(Strategy):
+            def preprocess(self, df: pl.DataFrame) -> pl.DataFrame:
+                return df
+
+            def next(self, ctx: BacktestContext) -> None:
+                if ctx.bar_index == 0:
+                    ctx.portfolio.order("asset", 10)
+
+        # Create data with a factor column
+        df = pl.DataFrame(
+            {
+                "timestamp": list(range(5)),
+                "close": [100.0, 102.0, 104.0, 106.0, 108.0],
+                "factor": [2.0, 2.0, 2.0, 2.0, 2.0],
+            }
+        )
+
+        # With factor_column: commission on raw price (close/factor)
+        engine = Engine(
+            strategy=BuyAndHold(),
+            data=df,
+            initial_cash=100_000,
+            commission=0.01,
+            factor_column="factor",
+        )
+        result = engine.run()
+        assert result.success is not False
+
+        # Verify factor was used: raw_price = 100/2 = 50
+        # Commission = 10 * 50 * 0.01 = 5
+        order = engine.portfolio.get_orders()[0]
+        assert abs(order.commission_paid - 5.0) < 0.01
+
+    def test_engine_without_factor_column(self):
+        """Engine without factor_column uses adjusted prices for commission."""
+
+        class BuyAndHold(Strategy):
+            def preprocess(self, df: pl.DataFrame) -> pl.DataFrame:
+                return df
+
+            def next(self, ctx: BacktestContext) -> None:
+                if ctx.bar_index == 0:
+                    ctx.portfolio.order("asset", 10)
+
+        df = pl.DataFrame(
+            {
+                "timestamp": list(range(5)),
+                "close": [100.0, 102.0, 104.0, 106.0, 108.0],
+                "factor": [2.0, 2.0, 2.0, 2.0, 2.0],
+            }
+        )
+
+        # Without factor_column: commission on adjusted price
+        engine = Engine(
+            strategy=BuyAndHold(),
+            data=df,
+            initial_cash=100_000,
+            commission=0.01,
+        )
+        result = engine.run()
+        assert result.success is not False
+
+        # Commission = 10 * 100 * 0.01 = 10
+        order = engine.portfolio.get_orders()[0]
+        assert abs(order.commission_paid - 10.0) < 0.01
+
+    def test_standardize_dataframe_recognizes_factor(self):
+        """standardize_dataframe should rename Factor -> factor."""
+        df = pl.DataFrame(
+            {
+                "Date": ["2024-01-01"],
+                "Close": [100.0],
+                "Factor": [1.5],
+            }
+        )
+        result = standardize_dataframe(df)
+        assert "factor" in result.columns
+        assert "close" in result.columns
+        assert "timestamp" in result.columns
+
+    def test_runner_backtest_with_factor_column(self):
+        """runner.backtest() passes factor_column through to Engine."""
+        from polarbt.runner import backtest
+
+        class SimpleStrategy(Strategy):
+            def preprocess(self, df: pl.DataFrame) -> pl.DataFrame:
+                return df
+
+            def next(self, ctx: BacktestContext) -> None:
+                if ctx.bar_index == 0:
+                    ctx.portfolio.order("asset", 10)
+
+        df = pl.DataFrame(
+            {
+                "timestamp": list(range(10)),
+                "close": [100.0 + i for i in range(10)],
+                "factor": [2.0] * 10,
+            }
+        )
+
+        result = backtest(
+            SimpleStrategy,
+            df,
+            initial_cash=100_000,
+            commission=0.01,
+            slippage=0.0,
+            factor_column="factor",
+        )
+        assert result.success is not False

@@ -189,6 +189,43 @@ results = backtest(MyMultiAssetStrategy, data, params={...})
 
 Columns are automatically prefixed (e.g., `BTC_close`, `ETH_close`).
 
+## Weight-Based Backtesting
+
+For portfolio allocation strategies (momentum rotation, factor models, equal-weight baskets), PolarBT provides a declarative `backtest_weights()` function. Instead of writing `preprocess()` + `next()`, you supply a long-format DataFrame with target weights per (date, symbol):
+
+```python
+import polars as pl
+from polarbt import backtest_weights
+
+# data: long-format DataFrame with columns date, symbol, close, weight
+result = backtest_weights(
+    data,
+    resample="M",           # rebalance monthly
+    resample_offset="2d",   # delay rebalance by 2 trading days
+    fee_ratio=0.001,
+    stop_loss=0.10,          # 10% per-position stop-loss
+    take_profit=0.25,        # 25% per-position take-profit
+    position_limit=0.5,      # max 50% in any single position
+    initial_capital=100_000,
+)
+
+print(result.metrics)
+print(result.equity.head())
+print(result.trades.head())
+
+# Forward-looking rebalance actions
+if result.next_actions is not None:
+    print(result.next_actions)
+```
+
+The result is a `WeightBacktestResult` with:
+- `equity` — equity curve DataFrame
+- `trades` — per-trade details
+- `metrics` — standard `BacktestMetrics`
+- `next_actions` — DataFrame of enter/exit/hold actions for the next rebalance
+
+See `examples/example_weight_backtest.py` for a complete runnable example.
+
 ## Next Steps
 
 - See `examples/` for complete runnable strategies

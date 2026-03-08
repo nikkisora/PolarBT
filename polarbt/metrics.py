@@ -609,3 +609,86 @@ def trade_level_metrics(trades: list[Any]) -> dict[str, float]:
         "max_consecutive_wins": max_consec_wins,
         "max_consecutive_losses": max_consec_losses,
     }
+
+
+def liquidity_metrics(
+    trades_df: pl.DataFrame,
+    data: pl.DataFrame,
+    limit_up_col: str = "limit_up",
+    limit_down_col: str = "limit_down",
+    trading_value_col: str = "trading_value",
+) -> dict[str, float | None]:
+    """Calculate liquidity metrics from trades and market data.
+
+    Args:
+        trades_df: Trades DataFrame (must have entry_price, exit_price,
+            entry_timestamp/entry_bar columns).
+        data: Original market data DataFrame.
+        limit_up_col: Column with limit-up prices.
+        limit_down_col: Column with limit-down prices.
+        trading_value_col: Column with daily money flow (price * volume).
+
+    Returns:
+        Dict with buy_high_ratio, sell_low_ratio, capacity. None for missing columns.
+    """
+    result: dict[str, float | None] = {
+        "buy_high_ratio": None,
+        "sell_low_ratio": None,
+        "capacity": None,
+    }
+
+    has_limit_up = limit_up_col in data.columns
+    has_limit_down = limit_down_col in data.columns
+    has_trading_value = trading_value_col in data.columns
+
+    if len(trades_df) == 0:
+        return result
+
+    # buy_high_ratio: fraction of entries at limit-up price
+    if has_limit_up and "entry_price" in trades_df.columns:
+        limit_ups = data[limit_up_col].to_list()
+        # Simple approach: compare entry prices against limit-up values
+        # This requires matching trades to data rows. For simplicity,
+        # check if entry_price >= max(limit_up) across the data.
+        # A more precise approach would match by date, but we keep it general.
+        if "entry_bar" in trades_df.columns:
+            at_limit = 0
+            total = 0
+            for row in trades_df.iter_rows(named=True):
+                bar = row.get("entry_bar")
+                ep = row.get("entry_price")
+                if bar is not None and ep is not None and 0 <= bar < len(limit_ups):
+                    lu = limit_ups[bar]
+                    if lu is not None and ep >= lu:
+                        at_limit += 1
+                    total += 1
+            result["buy_high_ratio"] = at_limit / total if total > 0 else 0.0
+        else:
+            result["buy_high_ratio"] = 0.0
+
+    # sell_low_ratio: fraction of exits at limit-down price
+    if has_limit_down and "exit_price" in trades_df.columns:
+        limit_downs = data[limit_down_col].to_list()
+        if "exit_bar" in trades_df.columns:
+            at_limit = 0
+            total = 0
+            for row in trades_df.iter_rows(named=True):
+                bar = row.get("exit_bar")
+                xp = row.get("exit_price")
+                if bar is not None and xp is not None and 0 <= bar < len(limit_downs):
+                    ld = limit_downs[bar]
+                    if ld is not None and xp <= ld:
+                        at_limit += 1
+                    total += 1
+            result["sell_low_ratio"] = at_limit / total if total > 0 else 0.0
+        else:
+            result["sell_low_ratio"] = 0.0
+
+    # capacity: 10th percentile of trading_value
+    if has_trading_value:
+        tv = data[trading_value_col].drop_nulls()
+        if len(tv) > 0:
+            p10 = tv.quantile(0.10)
+            result["capacity"] = float(p10) if p10 is not None else None  # type: ignore[arg-type]
+
+    return result

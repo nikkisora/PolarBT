@@ -105,6 +105,7 @@ Engine(
     leverage: float = 1.0,
     maintenance_margin: float | None = None,
     fractional_shares: bool = True,
+    factor_column: str | None = None,
 )
 ```
 
@@ -126,6 +127,7 @@ Engine(
 | `borrow_rate` | Annual rate for short positions (e.g. 0.02=2%/year), charged daily/252 |
 | `bars_per_day` | For intraday data: bars in a trading day (e.g. 390 for 1-min bars) |
 | `fractional_shares` | When `False`, order quantities are truncated to whole numbers |
+| `factor_column` | Column with price adjustment factors. When present, commissions are calculated on raw (unadjusted) prices |
 
 **Data format:** The engine auto-detects common column names (Date→timestamp, Open→open, Close→close, etc.). For single-asset data, the default price column is `"close"` with implicit asset name `"asset"`.
 
@@ -571,7 +573,7 @@ fig.write_html("backtest.html")
 
 ## Trades
 
-`Trade` dataclass attributes: `trade_id`, `asset`, `direction` ("long"/"short"), `entry_bar`, `entry_timestamp`, `entry_price`, `entry_size`, `entry_value`, `exit_bar`, `exit_timestamp`, `exit_price`, `exit_size`, `exit_value`, `pnl`, `pnl_pct`, `return_pct`, `bars_held`, `mae` (max adverse excursion), `mfe` (max favorable excursion).
+`Trade` dataclass attributes: `trade_id`, `asset`, `direction` ("long"/"short"), `entry_bar`, `entry_timestamp`, `entry_price`, `entry_size`, `entry_value`, `exit_bar`, `exit_timestamp`, `exit_price`, `exit_size`, `exit_value`, `pnl`, `pnl_pct`, `return_pct`, `bars_held`, `mae` (max adverse excursion, percentage), `mfe` (max favorable excursion, percentage), `bmfe` (best MFE before MAE), `trade_mdd` (max drawdown during trade, percentage), `pdays` (profitable days ratio).
 
 Access trades:
 ```python
@@ -670,6 +672,149 @@ ctx.portfolio.order("asset", 100, stop_price=105.0, limit_price=106.0)
 
 # Day order (expires end of day)
 ctx.portfolio.order_day("asset", 100, limit_price=95.0)
+```
+
+## Weight-Based Backtesting
+
+For portfolio allocation strategies that work with target weights rather than event-driven order logic, use `backtest_weights()`. It accepts a long-format DataFrame with one row per (date, symbol) and a weight column.
+
+Import: `from polarbt import backtest_weights, WeightBacktestResult`
+
+### Basic usage
+
+```python
+import polars as pl
+from polarbt import backtest_weights
+
+# data has columns: date, symbol, close, weight (and optionally open, high, low, volume)
+result = backtest_weights(data, resample="M", fee_ratio=0.001, initial_capital=100_000)
+
+print(result.metrics)          # BacktestMetrics
+print(result.equity.head())    # equity curve
+print(result.trades.head())    # trade log
+```
+
+### Parameters
+
+```python
+backtest_weights(
+    data: pl.DataFrame,
+    date_col: str = "date",
+    symbol_col: str = "symbol",
+    price_col: str = "close",
+    weight_col: str = "weight",
+    open_col: str | None = "open",
+    high_col: str | None = "high",
+    low_col: str | None = "low",
+    resample: str | None = "M",        # rebalance frequency
+    resample_offset: str | None = None, # delay rebalance (e.g. "2d", "1W")
+    fee_ratio: float = 0.001,
+    tax_ratio: float = 0.0,
+    stop_loss: float | None = None,     # per-position stop-loss (0.10 = 10%)
+    take_profit: float | None = None,
+    trail_stop: float | None = None,
+    position_limit: float = 1.0,        # max absolute weight per symbol
+    touched_exit: bool = False,         # OHLC intraday stop detection
+    t_plus: int = 1,                    # execution delay (0 = same bar)
+    initial_capital: float = 100_000.0,
+    factor_col: str | None = None,      # price adjustment factor column
+) -> WeightBacktestResult
+```
+
+| Parameter | Description |
+|---|---|
+| `resample` | `"D"` (daily), `"W"` / `"W-FRI"` (weekly), `"M"` (monthly), `"Q"` (quarterly), `"Y"` (yearly), or `None` (rebalance only when weights change) |
+| `resample_offset` | Delay rebalance by N trading days after the period boundary. Format: `"<N>d"` or `"<N>W"` |
+| `stop_loss` / `take_profit` / `trail_stop` | Per-position risk management. Expressed as fractions (e.g. 0.10 = 10%) |
+| `touched_exit` | When `True` and OHLC data is available, uses open/high/low to detect intraday stop triggers with priority logic (open gap → high → low) |
+| `position_limit` | Clips individual weights to `[-limit, +limit]`. Boolean weights (all 0/1) are auto-converted to equal-weight |
+| `t_plus` | Execution delay. `0` = execute on signal bar, `1` = execute next bar (more realistic) |
+| `factor_col` | Column with price adjustment factors. When present, commissions are calculated on raw (unadjusted) prices |
+
+### Weight normalization
+
+- **Boolean signals**: If all non-zero weights are `1.0`, they are converted to equal-weight (e.g. 3 symbols with weight 1.0 → 0.333 each)
+- **Over-allocation**: If `sum(|weights|) > 1`, weights are scaled proportionally to sum to 1
+- **Position limit**: Individual weights are clipped to `[-position_limit, position_limit]`
+
+### Result object
+
+`WeightBacktestResult` contains:
+
+| Attribute | Type | Description |
+|---|---|---|
+| `equity` | `pl.DataFrame` | Columns: `date`, `cumulative_return` |
+| `trades` | `pl.DataFrame` | Columns: `symbol`, `entry_date`, `exit_date`, `entry_price`, `exit_price`, `weight`, `return_pct`, `bars_held` |
+| `metrics` | `BacktestMetrics` | Standard performance metrics (same as `Engine.run()`) |
+| `next_actions` | `pl.DataFrame \| None` | Forward-looking actions: `symbol`, `action` (enter/exit/hold), `current_weight`, `target_weight` |
+
+### Next actions
+
+The `next_actions` attribute shows what trades would be needed to transition from the current portfolio state to the latest target weights. This is useful for live trading integration.
+
+```python
+if result.next_actions is not None:
+    print(result.next_actions)
+    # ┌────────┬────────┬────────────────┬───────────────┐
+    # │ symbol ┆ action ┆ current_weight ┆ target_weight │
+    # ╞════════╪════════╪════════════════╪═══════════════╡
+    # │ AAPL   ┆ hold   ┆ 0.25           ┆ 0.25          │
+    # │ GOOGL  ┆ exit   ┆ 0.25           ┆ 0.0           │
+    # │ MSFT   ┆ enter  ┆ 0.0            ┆ 0.5           │
+    # └────────┴────────┴────────────────┴───────────────┘
+```
+
+A standalone version is also available:
+
+```python
+from polarbt import compute_next_actions
+
+actions = compute_next_actions(
+    current_positions={"AAPL": 100, "GOOGL": 50},
+    target_weights={"AAPL": 0.5, "MSFT": 0.5},
+    portfolio_value=100_000,
+    current_prices={"AAPL": 150.0, "GOOGL": 120.0, "MSFT": 300.0},
+)
+# Returns DataFrame with: symbol, action, current_value, target_value, delta_shares
+```
+
+### Example
+
+```python
+from datetime import date, timedelta
+import numpy as np
+import polars as pl
+from polarbt import backtest_weights
+
+# Build long-format data with momentum-based weights
+rng = np.random.default_rng(42)
+symbols = ["AAPL", "GOOGL", "MSFT"]
+rows = []
+prices = {s: 100.0 for s in symbols}
+
+for i in range(252):
+    d = date(2024, 1, 2) + timedelta(days=i)
+    for sym in symbols:
+        prices[sym] *= np.exp(rng.normal(0.0003, 0.015))
+        rows.append({"date": d, "symbol": sym, "close": prices[sym], "weight": 0.0})
+
+data = pl.DataFrame(rows)
+
+# Assign equal-weight to top-2 by momentum
+data = data.with_columns(
+    pl.col("close").pct_change().rolling_sum(window_size=20).over("symbol").alias("mom")
+)
+data = data.with_columns(pl.col("mom").rank(descending=True).over("date").alias("rank"))
+data = data.with_columns(pl.when(pl.col("rank") <= 2).then(0.5).otherwise(0.0).alias("weight"))
+
+result = backtest_weights(
+    data,
+    resample="M",
+    fee_ratio=0.001,
+    stop_loss=0.10,
+    initial_capital=100_000,
+)
+print(result)
 ```
 
 ## DataFrame Column Conventions

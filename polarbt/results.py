@@ -39,6 +39,9 @@ class TradeStats:
     avg_pnl: float = 0.0
     profit_factor: float = 0.0
     total_pnl: float = 0.0
+    avg_bmfe: float = 0.0
+    avg_trade_mdd: float = 0.0
+    avg_pdays: float = 0.0
 
 
 @dataclass
@@ -130,6 +133,11 @@ class BacktestMetrics:
     expectancy: float = 0.0
     sqn: float = 0.0
     kelly_criterion: float = 0.0
+
+    # Liquidity metrics (populated when relevant data columns are present)
+    buy_high_ratio: float | None = None
+    sell_low_ratio: float | None = None
+    capacity: float | None = None
 
     # Optional fields populated by backtest() / optimize_bayesian()
     params: dict[str, Any] | None = None
@@ -255,4 +263,7 @@ def _backtest_metrics_from_dict(metrics_dict: dict[str, Any], trade_stats: Trade
         expectancy=metrics_dict.get("expectancy", 0.0),
         sqn=metrics_dict.get("sqn", 0.0),
         kelly_criterion=metrics_dict.get("kelly_criterion", 0.0),
+        buy_high_ratio=metrics_dict.get("buy_high_ratio"),
+        sell_low_ratio=metrics_dict.get("sell_low_ratio"),
+        capacity=metrics_dict.get("capacity"),
     )
