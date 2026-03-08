@@ -8,7 +8,6 @@ from polarbt.metrics import (
     alpha_beta,
     calculate_metrics,
     drawdown_duration_stats,
-    format_results,
     information_ratio,
     monthly_returns,
     tail_ratio,
@@ -311,7 +310,7 @@ class TestFormatResults:
         )
 
     def test_contains_key_labels(self) -> None:
-        output = format_results(self._make_results())
+        output = str(self._make_results())
         assert "Equity Final [$]" in output
         assert "Equity Peak [$]" in output
         assert "Return [%]" in output
@@ -324,7 +323,7 @@ class TestFormatResults:
         assert "Kelly Criterion" in output
 
     def test_values_formatted(self) -> None:
-        output = format_results(self._make_results())
+        output = str(self._make_results())
         assert "110,000.00" in output
         assert "10.00" in output  # Return [%]
         assert "1.50" in output  # Sharpe
@@ -333,16 +332,16 @@ class TestFormatResults:
         results = self._make_results()
         results.trades = pl.DataFrame(schema={"return_pct": pl.Float64, "pnl": pl.Float64, "bars_held": pl.Int64})
         results.trade_stats = TradeStats(total_trades=0, win_rate=0.0, profit_factor=0.0)
-        output = format_results(results)
+        output = str(results)
         assert "# Trades" in output
 
     def test_no_trades_key(self) -> None:
         results = self._make_results()
         results.trades = pl.DataFrame()
-        output = format_results(results)
+        output = str(results)
         assert "# Trades" in output
 
     def test_returns_string(self) -> None:
-        output = format_results(self._make_results())
+        output = str(self._make_results())
         assert isinstance(output, str)
         assert len(output.splitlines()) > 10

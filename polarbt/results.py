@@ -138,6 +138,58 @@ class BacktestMetrics:
     traceback: str | None = None
     all_results_df: pl.DataFrame | None = None
 
+    def __str__(self, label_width: int = 30) -> str:
+        """Format backtest results as a human-readable summary string.
+
+        Produces a clean, aligned table of key performance metrics similar to
+        backtesting.py output style.
+
+        Args:
+            label_width: Column width for metric labels (default 30).
+
+        Returns:
+            Formatted multi-line string ready for printing.
+        """
+        ts = self.trade_stats
+
+        def _fmt(label: str, value: object, fmt: str = "") -> str:
+            formatted = f"{value:{fmt}}" if fmt else str(value)
+            return f"{label:<{label_width}}{formatted:>20}"
+
+        lines = [
+            # --- Equity & Returns ---
+            _fmt("Equity Final [$]", self.final_equity, ",.2f"),
+            _fmt("Equity Peak [$]", self.equity_peak or self.initial_equity, ",.2f"),
+            _fmt("Return [%]", self.total_return * 100, ".2f"),
+            _fmt("Buy & Hold Return [%]", self.buy_hold_return * 100, ".2f"),
+            _fmt("Return (Ann.) [%]", self.return_annualized * 100, ".2f"),
+            _fmt("CAGR [%]", self.cagr * 100, ".2f"),
+            _fmt("Volatility (Ann.) [%]", self.volatility_annualized * 100, ".2f"),
+            "",
+            # --- Risk Metrics ---
+            _fmt("Sharpe Ratio", self.sharpe_ratio, ".2f"),
+            _fmt("Sortino Ratio", self.sortino_ratio, ".2f"),
+            _fmt("Calmar Ratio", self.calmar_ratio, ".2f"),
+            _fmt("Max. Drawdown [%]", self.max_drawdown * -100, ".2f"),
+            _fmt("Avg. Drawdown Duration [bars]", self.avg_drawdown_duration, ".0f"),
+            _fmt("Max. Drawdown Duration [bars]", self.max_drawdown_duration, ".0f"),
+            "",
+            # --- Trade Statistics ---
+            _fmt("# Trades", ts.total_trades, "d"),
+            _fmt("Win Rate [%]", ts.win_rate * 100, ".2f"),
+            _fmt("Best Trade [%]", self.best_trade_pct * 100, ".2f"),
+            _fmt("Worst Trade [%]", self.worst_trade_pct * 100, ".2f"),
+            _fmt("Avg. Trade [%]", self.avg_trade_pct * 100, ".2f"),
+            _fmt("Max. Trade Duration [bars]", self.max_trade_duration, ".0f"),
+            _fmt("Avg. Trade Duration [bars]", self.avg_trade_duration, ".0f"),
+            _fmt("Profit Factor", ts.profit_factor, ".2f"),
+            _fmt("Expectancy [$]", self.expectancy, ".2f"),
+            _fmt("SQN", self.sqn, ".2f"),
+            _fmt("Kelly Criterion", self.kelly_criterion, ".4f"),
+        ]
+
+        return "\n".join(lines)
+
     def to_scalar_dict(self) -> dict[str, Any]:
         """Convert to a flat dictionary of scalar values suitable for DataFrames.
 

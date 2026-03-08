@@ -50,7 +50,7 @@ pip install -e .
 ```python
 import polars as pl
 import yfinance as yf
-from polarbt import Engine, Strategy, format_results
+from polarbt import Engine, Strategy
 from polarbt import indicators as ind
 from polarbt.core import BacktestContext
 from polarbt.plotting import plot_backtest
@@ -83,7 +83,7 @@ engine = Engine(SMACross(), data, commission=.005, initial_cash=100_000)
 results = engine.run()
 
 # Pretty-print results
-print(format_results(results))
+print(results)
 
 # Interactive chart saved to HTML
 fig = plot_backtest(engine, title="SMA Crossover — AAPL", indicators=["sma_fast", "sma_slow"])

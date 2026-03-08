@@ -6,13 +6,10 @@ All metrics are calculated using vectorized Polars operations for maximum perfor
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import numpy as np
 import polars as pl
-
-if TYPE_CHECKING:
-    from polarbt.results import BacktestMetrics
 
 
 def calculate_metrics(equity_df: pl.DataFrame, initial_capital: float) -> dict[str, Any]:
@@ -542,69 +539,6 @@ def monthly_returns(equity_df: pl.DataFrame) -> pl.DataFrame:
     )
 
     return monthly.select(["year", "month", "return"])
-
-
-def format_results(results: BacktestMetrics, label_width: int = 30) -> str:
-    """Format backtest results as a human-readable summary string.
-
-    Produces a clean, aligned table of key performance metrics similar to
-    backtesting.py output style.
-
-    Args:
-        results: BacktestMetrics returned by ``backtest()`` or ``Engine.run()``.
-        label_width: Column width for metric labels (default 30).
-
-    Returns:
-        Formatted multi-line string ready for printing.
-
-    Example:
-        >>> results = backtest(MyStrategy, data)
-        >>> print(format_results(results))
-        Equity Final [$]                     168,935.12
-        Return [%]                               68.94
-        ...
-    """
-
-    ts = results.trade_stats
-
-    def _fmt(label: str, value: object, fmt: str = "") -> str:
-        """Format a single metric line."""
-        formatted = f"{value:{fmt}}" if fmt else str(value)
-        return f"{label:<{label_width}}{formatted:>20}"
-
-    lines = [
-        # --- Equity & Returns ---
-        _fmt("Equity Final [$]", results.final_equity, ",.2f"),
-        _fmt("Equity Peak [$]", results.equity_peak or results.initial_equity, ",.2f"),
-        _fmt("Return [%]", results.total_return * 100, ".2f"),
-        _fmt("Buy & Hold Return [%]", results.buy_hold_return * 100, ".2f"),
-        _fmt("Return (Ann.) [%]", results.return_annualized * 100, ".2f"),
-        _fmt("CAGR [%]", results.cagr * 100, ".2f"),
-        _fmt("Volatility (Ann.) [%]", results.volatility_annualized * 100, ".2f"),
-        "",
-        # --- Risk Metrics ---
-        _fmt("Sharpe Ratio", results.sharpe_ratio, ".2f"),
-        _fmt("Sortino Ratio", results.sortino_ratio, ".2f"),
-        _fmt("Calmar Ratio", results.calmar_ratio, ".2f"),
-        _fmt("Max. Drawdown [%]", results.max_drawdown * -100, ".2f"),
-        _fmt("Avg. Drawdown Duration [bars]", results.avg_drawdown_duration, ".0f"),
-        _fmt("Max. Drawdown Duration [bars]", results.max_drawdown_duration, ".0f"),
-        "",
-        # --- Trade Statistics ---
-        _fmt("# Trades", ts.total_trades, "d"),
-        _fmt("Win Rate [%]", ts.win_rate * 100, ".2f"),
-        _fmt("Best Trade [%]", results.best_trade_pct * 100, ".2f"),
-        _fmt("Worst Trade [%]", results.worst_trade_pct * 100, ".2f"),
-        _fmt("Avg. Trade [%]", results.avg_trade_pct * 100, ".2f"),
-        _fmt("Max. Trade Duration [bars]", results.max_trade_duration, ".0f"),
-        _fmt("Avg. Trade Duration [bars]", results.avg_trade_duration, ".0f"),
-        _fmt("Profit Factor", ts.profit_factor, ".2f"),
-        _fmt("Expectancy [$]", results.expectancy, ".2f"),
-        _fmt("SQN", results.sqn, ".2f"),
-        _fmt("Kelly Criterion", results.kelly_criterion, ".4f"),
-    ]
-
-    return "\n".join(lines)
 
 
 def trade_level_metrics(trades: list[Any]) -> dict[str, float]:

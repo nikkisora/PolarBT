@@ -15,7 +15,7 @@ Data flows through: `raw DataFrame → Strategy.preprocess() → Engine loop →
 
 ```python
 import polars as pl
-from polarbt import Engine, Strategy, format_results
+from polarbt import Engine, Strategy
 from polarbt import indicators as ind
 from polarbt.core import BacktestContext
 
@@ -39,7 +39,7 @@ class SMACross(Strategy):
 
 engine = Engine(SMACross(), data, commission=0.005, initial_cash=100_000)
 results = engine.run()
-print(format_results(results))
+print(results)
 ```
 
 ## Core Classes
@@ -542,7 +542,6 @@ Standalone metric functions (take equity DataFrames with `equity` column):
 | `drawdown_duration_stats` | `(equity_df)` | `dict` |
 | `monthly_returns` | `(equity_df)` | `pl.DataFrame` with year, month, return |
 | `trade_level_metrics` | `(trades)` | `dict` with expectancy, sqn, kelly |
-| `format_results` | `(results, label_width=30)` | `str` — pretty-printed summary |
 
 ## Plotting
 

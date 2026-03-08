@@ -35,7 +35,6 @@ from polarbt.core import (
     param,
     standardize_dataframe,
 )
-from polarbt.metrics import format_results
 from polarbt.orders import Order, OrderStatus, OrderType
 from polarbt.results import BacktestMetrics, TradeStats
 from polarbt.runner import backtest, backtest_batch, optimize, optimize_bayesian, optimize_multi, walk_forward_analysis
@@ -100,6 +99,5 @@ __all__ = [
     "PermutationTestResult",
     "BacktestMetrics",
     "TradeStats",
-    "format_results",
     "plotting",
 ]
