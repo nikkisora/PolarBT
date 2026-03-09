@@ -197,12 +197,12 @@ if __name__ == "__main__":
     )
 
     print("\n  Best parameters:")
-    best_params = {k: best[k] for k in param_grid}
+    best_params = best.params
     for k, v in best_params.items():
         print(f"    {k}: {v}")
-    print(f"  Sharpe Ratio:  {best['sharpe_ratio']:.3f}")
-    print(f"  Total Return:  {best['total_return']:.2%}")
-    print(f"  Max Drawdown:  {best['max_drawdown']:.2%}")
+    print(f"  Sharpe Ratio:  {best.metrics.sharpe_ratio:.3f}")
+    print(f"  Total Return:  {best.metrics.total_return:.2%}")
+    print(f"  Max Drawdown:  {best.metrics.max_drawdown:.2%}")
 
     # -----------------------------------------------------------------------
     # 5. Generate heatmap and sensitivity plots

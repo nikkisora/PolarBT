@@ -514,7 +514,6 @@ def optimize(
 
     Returns:
         OptimizeResult with best parameters, metrics, and full results DataFrame.
-        Supports dict-style access for backward compatibility.
 
     Example:
         >>> param_grid = {"fast": [5, 10, 20], "slow": [20, 50, 100]}
@@ -524,7 +523,6 @@ def optimize(
         ... )
         >>> best.params  # {"fast": 10, "slow": 50}
         >>> best.metrics.sharpe_ratio  # 1.23
-        >>> best["fast"]  # 10 (backward compatible)
     """
     param_sets = _generate_param_sets(param_grid, constraint)
 
@@ -1111,9 +1109,8 @@ def walk_forward_analysis(
             factor_column=factor_column,
         )
 
-        # Extract the optimized parameter values from the flat result row
-        param_keys = list(param_grid.keys())
-        best_param_values = {k: best_params[k] for k in param_keys}
+        # Extract the optimized parameter values
+        best_param_values = best_params.params
 
         # Test on out-of-sample data
         test_result = backtest(
@@ -1139,7 +1136,7 @@ def walk_forward_analysis(
         )
 
         test_scalars = test_result.to_scalar_dict()
-        train_obj_val = best_params.get(objective, 0.0)
+        train_obj_val = getattr(best_params.metrics, objective, 0.0)
         test_obj_val = getattr(test_result, objective, 0.0)
 
         results.append(

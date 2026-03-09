@@ -156,10 +156,10 @@ if __name__ == "__main__":
         verbose=False,
     )
 
-    best_is_params = {k: best_is[k] for k in param_grid}
+    best_is_params = best_is.params
     print(f"Best In-Sample Params:  {best_is_params}")
-    print(f"In-Sample Sharpe:       {best_is['sharpe_ratio']:.3f}")
-    print(f"In-Sample Return:       {best_is['total_return']:.2%}")
+    print(f"In-Sample Sharpe:       {best_is.metrics.sharpe_ratio:.3f}")
+    print(f"In-Sample Return:       {best_is.metrics.total_return:.2%}")
 
     # -------------------------------------------------------------------
     # 3. Anchored walk-forward (expanding training window)
@@ -209,7 +209,7 @@ if __name__ == "__main__":
     print(f"\n{'=' * 70}")
     print("SUMMARY")
     print("=" * 70)
-    print(f"In-Sample Sharpe:               {best_is['sharpe_ratio']:.3f}")
+    print(f"In-Sample Sharpe:               {best_is.metrics.sharpe_ratio:.3f}")
     print(f"Walk-Forward OOS Sharpe (Roll):  {avg_oos_sharpe:.3f}")
     print(f"Walk-Forward OOS Sharpe (Anch):  {avg_anchored_sharpe:.3f}")
     print("\nA large gap between in-sample and OOS suggests overfitting.")

@@ -254,12 +254,13 @@ def backtest_weights(
     # Pending weights for T+1 execution
     pending_weights: dict[str, float] | None = None
     prev_weights: dict[str, float] = {}
+    prices: dict[str, float] = {}
 
     for bar_idx, current_date in enumerate(dates_in_order):
         date_rows = data.filter(pl.col(date_col) == current_date)
 
         # Build price map for this date
-        prices: dict[str, float] = {}
+        prices = {}
         ohlc: dict[str, dict[str, float]] = {}
         factors: dict[str, float] = {}
 

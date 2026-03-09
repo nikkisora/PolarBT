@@ -115,7 +115,7 @@ if __name__ == "__main__":
 
     trade_stats = results.trade_stats
     print(f"Trades:          {trade_stats.total_trades}")
-    print(f"Win Rate:        {trade_stats.win_rate:.1f}%")
+    print(f"Win Rate:        {trade_stats.win_rate:.1%}")
 
     # Show final positions
     print("\nFinal Positions:")

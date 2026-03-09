@@ -82,9 +82,9 @@ if __name__ == "__main__":
     )
 
     print("\nOptimization Results:")
-    print(f"  Best fast_period: {best['fast_period']}")
-    print(f"  Best slow_period: {best['slow_period']}")
-    print(f"  Sharpe Ratio:     {best['sharpe_ratio']:.3f}")
+    print(f"  Best fast_period: {best.params['fast_period']}")
+    print(f"  Best slow_period: {best.params['slow_period']}")
+    print(f"  Sharpe Ratio:     {best.metrics.sharpe_ratio:.3f}")
 
     print("\n" + "=" * 50)
     print("Example completed successfully!")

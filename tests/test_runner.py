@@ -112,9 +112,9 @@ class TestOptimize:
         )
 
         assert best is not None
-        assert "sma_period" in best
-        assert "sharpe_ratio" in best
-        assert best["sma_period"] in [5, 10, 15, 20]
+        assert "sma_period" in best.params
+        assert best.metrics.sharpe_ratio is not None
+        assert best.params["sma_period"] in [5, 10, 15, 20]
 
     def test_optimize_maximize_vs_minimize(self, sample_data):
         """Test maximizing vs minimizing."""
@@ -159,9 +159,9 @@ class TestOptimize:
         assert best.results_df is not None
         assert len(best.results_df) == 3
 
-        # Backward compat: dict-style access still works
-        assert best["sma_period"] == best.params["sma_period"]
-        assert "sharpe_ratio" in best
+        # Access params and metrics directly
+        assert best.params["sma_period"] in [5, 10, 20]
+        assert best.metrics.sharpe_ratio is not None
 
     def test_optimize_filters_failed_backtests(self, sample_data):
         """optimize() filters out failed backtests so sentinels don't win."""
@@ -261,7 +261,7 @@ class TestSequentialFallback:
             verbose=False,
         )
         assert best is not None
-        assert "sharpe_ratio" in best
+        assert best.metrics.sharpe_ratio is not None
 
 
 class TestSpawnContext:

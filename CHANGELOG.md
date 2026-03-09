@@ -1,5 +1,20 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- `Engine` now eagerly clears previous portfolio on re-run, preventing memory accumulation across sequential backtests
+- `Engine.__del__` added as safety net for callers that skip explicit `cleanup()`
+- `prices` possibly unbound in `weight_backtest.py` when data is empty
+- Win rate formatting in examples (was showing `0.6%` instead of `60.0%`)
+
+### Changed
+- `_calculate_auto_warmup` uses vectorized `arg_max()` instead of row-by-row iteration
+- `standardize_dataframe` no longer clones input (Polars DataFrames are immutable)
+
+### Removed
+- Dict-style access on `OptimizeResult` — use `.params` and `.metrics` attributes instead
+
 ## [0.1.10] - 2026-03-08
 
 ### Changed

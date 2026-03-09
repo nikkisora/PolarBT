@@ -87,7 +87,7 @@ class TestConstraints:
             n_jobs=1,
         )
 
-        assert best["fast"] < best["slow"]
+        assert best.params["fast"] < best.params["slow"]
 
     def test_constraint_all_rejected_raises(self, sample_data):
         """Raise ValueError when all combinations are rejected."""
@@ -116,7 +116,7 @@ class TestConstraints:
         )
 
         assert best is not None
-        assert "sharpe_ratio" in best
+        assert best.metrics.sharpe_ratio is not None
 
 
 class TestMultiObjective:
