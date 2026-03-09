@@ -139,7 +139,6 @@ def standardize_dataframe(
         # Specify timestamp column explicitly
         df = standardize_dataframe(df, timestamp_col="datetime")
     """
-    df = df.clone()
     renames: dict[str, str] = {}
 
     # --- Timestamp ---
@@ -2454,8 +2453,7 @@ class Engine:
         self.processed_data: pl.DataFrame | None = None
 
     def _calculate_auto_warmup(self, df: pl.DataFrame) -> int:
-        """
-        Calculate automatic warmup period by finding the first row where all columns are non-null.
+        """Calculate automatic warmup period by finding the first row where all columns are non-null.
 
         This method finds the first bar where all indicators and data are ready.
         Excludes timestamp columns from the check.
@@ -2469,27 +2467,36 @@ class Engine:
         Example:
             If indicators need 20 bars to warm up, this will return 20.
         """
-        # Get columns to check (exclude timestamp-related columns)
         timestamp_cols = {"timestamp", "date", "datetime", "time", "dt", "_index"}
         cols_to_check = [col for col in df.columns if col not in timestamp_cols]
 
         if not cols_to_check:
-            # No columns to check, no warmup needed
             return 0
 
-        # Find the first row where all columns are non-null
-        # Create a boolean column that is True when all cols_to_check are non-null
-        all_non_null = df.select(
-            pl.all_horizontal([pl.col(col).is_not_null() for col in cols_to_check]).alias("all_valid")
-        )
+        # Build a single boolean mask: True where every checked column is non-null
+        all_valid = df.select(pl.all_horizontal([pl.col(col).is_not_null() for col in cols_to_check]).alias("valid"))[
+            "valid"
+        ]
 
-        # Find the index of the first True value
-        for idx, row in enumerate(all_non_null.iter_rows()):
-            if row[0]:  # First (and only) column is "all_valid"
-                return idx
+        # Fast vectorized lookup instead of row-by-row iteration
+        if not all_valid.any():
+            return max(0, len(df) - 1)
 
-        # If no row has all non-null values, return length - 1 (skip all but last)
-        return max(0, len(df) - 1)
+        return int(all_valid.arg_max())  # type: ignore[arg-type]
+
+    def _clear_portfolio(self) -> None:
+        """Eagerly release large lists inside the current portfolio.
+
+        Clears equity curves, timestamps, orders, trades and positions so the
+        memory is freed immediately rather than waiting for garbage collection.
+        """
+        if self.portfolio is not None:
+            self.portfolio.equity_curve.clear()
+            self.portfolio.timestamps.clear()
+            self.portfolio.orders.clear()
+            self.portfolio.trade_tracker.trades.clear()
+            self.portfolio.trade_tracker.open_positions.clear()
+            self.portfolio.positions.clear()
 
     def cleanup(self) -> None:
         """Release references to large internal objects for memory management.
@@ -2499,17 +2506,26 @@ class Engine:
         intermediate data. Useful when running multiple sequential backtests
         in the same process to prevent memory exhaustion and segfaults.
         """
-        if self.portfolio is not None:
-            self.portfolio.equity_curve.clear()
-            self.portfolio.timestamps.clear()
-            self.portfolio.orders.clear()
-            self.portfolio.trade_tracker.trades.clear()
-            self.portfolio.trade_tracker.open_positions.clear()
-            self.portfolio.positions.clear()
-            self.portfolio = None
+        self._clear_portfolio()
+        self.portfolio = None
         self.processed_data = None
         self.results = None
         gc.collect()
+
+    def __del__(self) -> None:
+        """Release internal objects when the engine is garbage collected.
+
+        Acts as a safety net for callers that do not invoke :meth:`cleanup`
+        explicitly (e.g. when creating a new ``Engine`` per backtest inside a
+        loop).  Does **not** call ``gc.collect()`` to avoid re-entrancy.
+        """
+        try:
+            self._clear_portfolio()
+            self.portfolio = None
+            self.processed_data = None
+            self.results = None
+        except Exception:
+            pass
 
     def run(self) -> BacktestMetrics:
         """Run the backtest simulation.
@@ -2517,7 +2533,10 @@ class Engine:
         Returns:
             BacktestMetrics with all performance metrics and trade data.
         """
-        # Clean up state from any previous run to prevent memory accumulation
+        # Eagerly release large objects from any previous run so memory is
+        # reclaimed before the new portfolio and processed data are allocated.
+        self._clear_portfolio()
+        self.portfolio = None
         self.processed_data = None
         self.results = None
 

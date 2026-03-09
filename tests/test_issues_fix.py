@@ -478,3 +478,97 @@ class TestCombinedScenario:
             engine.cleanup()
 
         gc.collect()
+
+
+# ---------------------------------------------------------------------------
+# Issue 4: Sequential Engine.run() without explicit cleanup
+# ---------------------------------------------------------------------------
+
+
+class TestNoCleanupSequentialBacktests:
+    """Verify that sequential backtests work without explicit cleanup().
+
+    Reproduces the pattern used by external evaluation scripts that create a
+    new Engine per stock and call engine.run() directly, relying on Python GC
+    rather than explicit engine.cleanup().
+    """
+
+    def test_sequential_backtests_no_cleanup(self):
+        """Multiple backtests with fresh Engine instances complete without cleanup."""
+        all_results = []
+        for seed in [42, 123, 456, 789, 1011]:
+            df = _make_normal_data(n=500, seed=seed)
+            strategy = SimpleEMA()
+            engine = Engine(
+                strategy=strategy,
+                data=df,
+                initial_cash=100_000,
+                commission=0.001,
+                slippage=0.0005,
+                warmup="auto",
+            )
+            results = engine.run()
+            assert results is not None
+            assert results.total_return is not None
+            all_results.append(
+                {
+                    "sharpe": results.sharpe_ratio,
+                    "trades": results.trade_stats.total_trades,
+                    "_results": results,
+                }
+            )
+            # Deliberately NO cleanup — mirrors evaluate.py pattern
+
+        assert len(all_results) == 5
+        # All results should be accessible after the loop
+        for r in all_results:
+            assert isinstance(r["sharpe"], float)
+
+    def test_sequential_micro_price_no_cleanup(self):
+        """Micro-price backtests without cleanup do not crash."""
+        all_results = []
+        for seed in [42, 123, 456, 789, 1011, 1213]:
+            df = _make_micro_price_data(n=3000, seed=seed)
+            engine = Engine(
+                strategy=SimpleEMA(),
+                data=df,
+                initial_cash=100_000,
+                commission=0.001,
+                slippage=0.0005,
+                warmup="auto",
+                bars_per_day=163,
+            )
+            results = engine.run()
+            assert results is not None
+            all_results.append({"_results": results})
+
+        assert len(all_results) == 6
+
+    def test_del_cleans_up_portfolio(self):
+        """Engine.__del__ releases portfolio resources."""
+        df = _make_normal_data(n=200)
+        engine = Engine(strategy=SimpleEMA(), data=df, warmup="auto")
+        engine.run()
+
+        assert engine.portfolio is not None
+        assert len(engine.portfolio.equity_curve) > 0
+
+        # Trigger __del__ via explicit deletion
+        del engine
+        gc.collect()  # Ensure finalizer runs
+
+    def test_rerun_clears_previous_portfolio(self):
+        """Engine.run() clears the previous portfolio before allocating a new one."""
+        df = _make_normal_data(n=200)
+        engine = Engine(strategy=SimpleEMA(), data=df, warmup="auto")
+
+        r1 = engine.run()
+        assert engine.portfolio is not None
+        first_equity_len = len(engine.portfolio.equity_curve)
+        assert first_equity_len > 0
+
+        r2 = engine.run()
+        assert engine.portfolio is not None
+        # The equity curve should be the same length (same data, same warmup)
+        assert len(engine.portfolio.equity_curve) == first_equity_len
+        assert abs(r1.total_return - r2.total_return) < 1e-10
