@@ -2,7 +2,7 @@
   <img src="assets/cover.png" alt="PolarBT" width="600">
 </p>
 
-# PolarBT
+# Polar BackTest
 
 A lightweight, high-performance backtesting library for trading strategy development and optimization. Built on [Polars](https://pola.rs/) for fast vectorized data processing with an event-driven execution loop for flexible strategy logic.
 
