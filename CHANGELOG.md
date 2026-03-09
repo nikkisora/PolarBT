@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.1.11] - 2026-03-09
 
 ### Fixed
 - `Engine` now eagerly clears previous portfolio on re-run, preventing memory accumulation across sequential backtests
