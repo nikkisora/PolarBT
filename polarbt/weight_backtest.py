@@ -1,7 +1,9 @@
 """Weight-based portfolio backtesting.
 
-Provides a declarative, vectorized-where-possible backtester for portfolio weight
-allocation strategies (momentum rotation, factor models, equal-weight baskets).
+Provides a declarative backtester for portfolio weight allocation strategies
+(momentum rotation, factor models, equal-weight baskets).  Internally uses
+the unified Engine + Portfolio so all features (commission models, stop-loss
+with OHLC priority, leverage, order delay, etc.) are available.
 """
 
 from __future__ import annotations
@@ -12,8 +14,8 @@ from typing import Any
 
 import polars as pl
 
-from polarbt.metrics import calculate_metrics
-from polarbt.results import BacktestMetrics, TradeStats, _backtest_metrics_from_dict
+from polarbt.core import BacktestContext, Engine, Strategy
+from polarbt.results import BacktestMetrics
 
 
 @dataclass
@@ -24,7 +26,7 @@ class WeightBacktestResult:
         equity: DataFrame with columns ``date`` and ``cumulative_return``.
         trades: DataFrame with per-trade details.
         metrics: Standard backtest performance metrics.
-        next_actions: Forward-looking stock operations (Feature 6).
+        next_actions: Forward-looking stock operations.
     """
 
     equity: pl.DataFrame
@@ -34,6 +36,11 @@ class WeightBacktestResult:
 
     def __str__(self) -> str:
         return str(self.metrics)
+
+
+# ---------------------------------------------------------------------------
+# Helpers (kept as public for tests and reuse)
+# ---------------------------------------------------------------------------
 
 
 def _parse_offset(offset: str | None) -> int:
@@ -81,8 +88,7 @@ def _detect_rebalance_dates(
     if not date_list:
         return set()
 
-    # Detect period boundaries
-    boundary_indices: list[int] = [0]  # Always include first date
+    boundary_indices: list[int] = [0]
 
     for i in range(1, len(date_list)):
         prev = date_list[i - 1]
@@ -95,18 +101,15 @@ def _detect_rebalance_dates(
             is_boundary = (curr.month - 1) // 3 != (prev.month - 1) // 3
         elif resample == "Y":
             is_boundary = curr.year != prev.year
-        elif resample == "W" or resample == "W-FRI":
+        elif resample in ("W", "W-FRI"):
             is_boundary = curr.isocalendar()[1] != prev.isocalendar()[1]
 
         if is_boundary:
             boundary_indices.append(i)
 
-    # Apply offset: shift each boundary index forward by offset_days
     rebalance_indices: set[int] = set()
     for idx in boundary_indices:
         shifted = idx + offset_days
-        # Collapse: if shifted >= len(date_list), skip. If multiple collapse
-        # to same date, the set naturally deduplicates.
         if shifted < len(date_list):
             rebalance_indices.add(shifted)
 
@@ -133,21 +136,127 @@ def _normalize_weights(
     if not weights:
         return {}
 
-    # Clip individual weights
     clipped = {s: max(-position_limit, min(position_limit, w)) for s, w in weights.items()}
 
-    # Boolean detection: if all non-zero weights are 1.0 -> equal weight
     nonzero = {s: w for s, w in clipped.items() if w != 0}
     if nonzero and all(v == 1.0 for v in nonzero.values()):
         eq_w = 1.0 / len(nonzero)
         clipped = {s: (eq_w if w != 0 else 0.0) for s, w in clipped.items()}
 
-    # Scale if sum(|w|) > 1
     total_abs = sum(abs(w) for w in clipped.values())
     if total_abs > 1.0:
         clipped = {s: w / total_abs for s, w in clipped.items()}
 
     return clipped
+
+
+# ---------------------------------------------------------------------------
+# Internal strategy that reads weights from DataFrame columns
+# ---------------------------------------------------------------------------
+
+
+class _DataFrameWeightStrategy(Strategy):
+    """Internal strategy that reads target weights from a DataFrame column and rebalances on schedule."""
+
+    def __init__(
+        self,
+        *,
+        weight_col: str,
+        rebalance_dates: set[Any],
+        resample: str | None,
+        position_limit: float,
+        stop_loss: float | None,
+        take_profit: float | None,
+        trail_stop: float | None,
+    ) -> None:
+        super().__init__()
+        self._weight_col = weight_col
+        self._rebalance_dates = rebalance_dates
+        self._resample = resample
+        self._position_limit = position_limit
+        self._stop_loss = stop_loss
+        self._take_profit = take_profit
+        self._trail_stop = trail_stop
+        self._prev_weights: dict[str, float] = {}
+        self._latest_weights: dict[str, float] = {}
+        # Track positions from previous bar to detect stop-outs
+        self._prev_position_syms: set[str] = set()
+
+    def preprocess(self, df: pl.DataFrame) -> pl.DataFrame:
+        return df
+
+    def next(self, ctx: BacktestContext) -> None:
+        # 1. Detect symbols stopped out this bar: had position last bar, now flat
+        closed_by_stop: set[str] = set()
+        has_stops = self._stop_loss is not None or self._take_profit is not None or self._trail_stop is not None
+        if has_stops:
+            for sym in self._prev_position_syms:
+                if ctx.portfolio.get_position(sym) == 0:
+                    closed_by_stop.add(sym)
+
+        # 2. Set stops on positions that just appeared (handles order_delay gracefully)
+        self._apply_stops(ctx)
+
+        # 3. Read current weights from bar data
+        current_weights: dict[str, float] = {}
+        for sym in ctx.symbols:
+            w = ctx.row(sym).get(self._weight_col)
+            if w is not None:
+                current_weights[sym] = float(w)
+
+        # 4. Determine if we should rebalance
+        should_rebalance = False
+        if self._resample is None:
+            if current_weights != self._prev_weights:
+                should_rebalance = True
+        elif ctx.timestamp in self._rebalance_dates:
+            should_rebalance = True
+
+        if should_rebalance:
+            # Remove symbols that were stopped out this bar to prevent re-entry
+            rebalance_weights = {s: w for s, w in current_weights.items() if s not in closed_by_stop}
+            normalized = _normalize_weights(rebalance_weights, self._position_limit)
+            ctx.portfolio.rebalance(normalized)
+            # For order_delay=0, positions exist now — set stops immediately
+            self._apply_stops(ctx)
+
+        self._prev_weights = current_weights
+        self._latest_weights = current_weights
+
+        # 5. Track current positions for next bar's stop-out detection
+        self._prev_position_syms = {sym for sym in ctx.symbols if ctx.portfolio.get_position(sym) != 0}
+
+    def _apply_stops(self, ctx: BacktestContext) -> None:
+        """Set stop-loss/take-profit/trailing-stop on positions that don't have them yet."""
+        has_stops = self._stop_loss is not None or self._take_profit is not None or self._trail_stop is not None
+        if not has_stops:
+            return
+
+        for sym in ctx.symbols:
+            pos = ctx.portfolio.get_position(sym)
+            if pos == 0:
+                continue
+            price = ctx.row(sym).get("close")
+            if price is None:
+                continue
+            price = float(price)
+            is_long = pos > 0
+
+            if self._stop_loss is not None and ctx.portfolio.get_stop_loss(sym) is None:
+                sl_price = price * (1 - self._stop_loss) if is_long else price * (1 + self._stop_loss)
+                ctx.portfolio.set_stop_loss(sym, stop_price=sl_price)
+
+            if self._take_profit is not None and ctx.portfolio.get_take_profit(sym) is None:
+                tp_price = price * (1 + self._take_profit) if is_long else price * (1 - self._take_profit)
+                ctx.portfolio.set_take_profit(sym, target_price=tp_price)
+
+            if self._trail_stop is not None and ctx.portfolio.get_trailing_stop(sym) is None:
+                ctx.portfolio.set_trailing_stop(sym, trail_pct=self._trail_stop)
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
 
 
 def backtest_weights(
@@ -173,6 +282,9 @@ def backtest_weights(
     factor_col: str | None = None,
 ) -> WeightBacktestResult:
     """Run a weight-based portfolio backtest.
+
+    Internally uses the unified Engine and Portfolio, so all core features
+    (commission models, OHLC stop priority, leverage, etc.) apply.
 
     Args:
         data: Long-format DataFrame with one row per (date, symbol).
@@ -228,276 +340,77 @@ def backtest_weights(
             metrics=BacktestMetrics(initial_equity=initial_capital, final_equity=initial_capital),
         )
 
-    # Sort by date
-    data = data.sort(date_col)
+    # --- Prepare data for Engine ---
+    # Rename columns to canonical names expected by Engine
+    renames: dict[str, str] = {}
+    if date_col != "timestamp":
+        renames[date_col] = "timestamp"
+    if symbol_col != "symbol":
+        renames[symbol_col] = "symbol"
+    if price_col != "close":
+        renames[price_col] = "close"
 
+    engine_data = data
+    if renames:
+        engine_data = engine_data.rename(renames)
+
+    # Rename OHLC columns if they exist and aren't already canonical
+    ohlc_renames: dict[str, str] = {}
+    if open_col and open_col in data.columns and open_col != "open" and open_col not in renames:
+        ohlc_renames[open_col] = "open"
+    if high_col and high_col in data.columns and high_col != "high" and high_col not in renames:
+        ohlc_renames[high_col] = "high"
+    if low_col and low_col in data.columns and low_col != "low" and low_col not in renames:
+        ohlc_renames[low_col] = "low"
+    if ohlc_renames:
+        engine_data = engine_data.rename(ohlc_renames)
+
+    # Strip OHLC columns when touched_exit=False so Engine uses close-only for stops
+    if not touched_exit:
+        drop_cols = [c for c in ("open", "high", "low") if c in engine_data.columns]
+        if drop_cols:
+            engine_data = engine_data.drop(drop_cols)
+
+    engine_data = engine_data.sort(["timestamp", "symbol"])
+
+    # --- Compute rebalance schedule ---
     offset_days = _parse_offset(resample_offset)
-    unique_dates = data[date_col].unique().sort()
+    # Use the original date column values (now renamed to 'timestamp')
+    unique_dates = engine_data["timestamp"].unique().sort()
     rebalance_dates = _detect_rebalance_dates(unique_dates, resample, offset_days)
 
-    # --- State ---
-    portfolio_value = initial_capital
-    cash = initial_capital
-    positions: dict[str, float] = {}  # symbol -> quantity
-    entry_prices: dict[str, float] = {}  # symbol -> entry price
-    entry_dates: dict[str, Any] = {}  # symbol -> entry date
-    peak_prices: dict[str, float] = {}  # symbol -> highest price since entry (for trail)
-    entry_bars: dict[str, int] = {}  # symbol -> bar index at entry
+    # --- Build and run Engine ---
+    strategy = _DataFrameWeightStrategy(
+        weight_col=weight_col,
+        rebalance_dates=rebalance_dates,
+        resample=resample,
+        position_limit=position_limit,
+        stop_loss=stop_loss,
+        take_profit=take_profit,
+        trail_stop=trail_stop,
+    )
 
-    equity_dates: list[Any] = []
-    equity_values: list[float] = []
-    trade_records: list[dict[str, Any]] = []
+    commission = fee_ratio + tax_ratio
 
-    # Build a date -> row mapping: for each date, collect {symbol: row_data}
-    dates_in_order = unique_dates.to_list()
+    engine = Engine(
+        strategy=strategy,
+        data=engine_data,  # Form C: long-format DataFrame with 'symbol' column
+        initial_cash=initial_capital,
+        commission=commission,
+        slippage=0.0,
+        warmup=0,
+        order_delay=t_plus,
+        factor_column=factor_col,
+    )
+    engine_results = engine.run()
 
-    # Pending weights for T+1 execution
-    pending_weights: dict[str, float] | None = None
-    prev_weights: dict[str, float] = {}
-    prices: dict[str, float] = {}
+    # --- Build WeightBacktestResult ---
+    portfolio = engine.portfolio
+    assert portfolio is not None
 
-    for bar_idx, current_date in enumerate(dates_in_order):
-        date_rows = data.filter(pl.col(date_col) == current_date)
-
-        # Build price map for this date
-        prices = {}
-        ohlc: dict[str, dict[str, float]] = {}
-        factors: dict[str, float] = {}
-
-        for row in date_rows.iter_rows(named=True):
-            sym = row[symbol_col]
-            p = row[price_col]
-            if p is not None and p > 0:
-                prices[sym] = float(p)
-                if open_col and open_col in data.columns and row.get(open_col) is not None:
-                    ohlc[sym] = {
-                        "open": float(row[open_col]),
-                        "high": float(row.get(high_col, p))
-                        if high_col and high_col in data.columns and row.get(high_col) is not None
-                        else float(p),
-                        "low": float(row.get(low_col, p))
-                        if low_col and low_col in data.columns and row.get(low_col) is not None
-                        else float(p),
-                        "close": float(p),
-                    }
-                if factor_col and factor_col in data.columns and row.get(factor_col) is not None:
-                    factors[sym] = float(row[factor_col])
-
-        # 1. Update position values at current prices
-        position_value = 0.0
-        for sym, qty in list(positions.items()):
-            if sym in prices:
-                position_value += qty * prices[sym]
-
-        portfolio_value = cash + position_value
-
-        # 2. Check stops (SL/TP/trailing) with priority logic when OHLC available
-        closed_by_stop: set[str] = set()
-        for sym in list(positions.keys()):
-            if sym not in prices:
-                continue
-            qty = positions[sym]
-            if qty == 0:
-                continue
-            ep = entry_prices.get(sym, prices[sym])
-            current_p = prices[sym]
-
-            exit_price: float | None = None
-            is_long = qty > 0
-
-            if touched_exit and sym in ohlc:
-                o, h, low = ohlc[sym]["open"], ohlc[sym]["high"], ohlc[sym]["low"]
-                # Determine effective stop price
-                eff_sl: float | None = None
-                if stop_loss is not None:
-                    eff_sl = ep * (1 - stop_loss) if is_long else ep * (1 + stop_loss)
-                if trail_stop is not None and sym in peak_prices:
-                    ts_price = peak_prices[sym] * (1 - trail_stop) if is_long else peak_prices[sym] * (1 + trail_stop)
-                    eff_sl = (
-                        ts_price if eff_sl is None else (max(eff_sl, ts_price) if is_long else min(eff_sl, ts_price))
-                    )
-
-                eff_tp: float | None = None
-                if take_profit is not None:
-                    eff_tp = ep * (1 + take_profit) if is_long else ep * (1 - take_profit)
-
-                # Priority 1: Open breaches
-                if eff_sl is not None and ((is_long and o <= eff_sl) or (not is_long and o >= eff_sl)):
-                    exit_price = o
-                if (
-                    exit_price is None
-                    and eff_tp is not None
-                    and ((is_long and o >= eff_tp) or (not is_long and o <= eff_tp))
-                ):
-                    exit_price = o
-                # Priority 2: High
-                if exit_price is None:
-                    if is_long and eff_tp is not None and h >= eff_tp:
-                        exit_price = eff_tp
-                    elif not is_long and eff_sl is not None and h >= eff_sl:
-                        exit_price = eff_sl
-                # Priority 3: Low
-                if exit_price is None:
-                    if is_long and eff_sl is not None and low <= eff_sl:
-                        exit_price = eff_sl
-                    elif not is_long and eff_tp is not None and low <= eff_tp:
-                        exit_price = eff_tp
-            else:
-                # Close-price stop checks
-                if stop_loss is not None:
-                    if is_long:
-                        sl_price = ep * (1 - stop_loss)
-                        if current_p <= sl_price:
-                            exit_price = sl_price
-                    else:
-                        sl_price = ep * (1 + stop_loss)
-                        if current_p >= sl_price:
-                            exit_price = sl_price
-
-                if exit_price is None and take_profit is not None:
-                    if is_long:
-                        tp_price = ep * (1 + take_profit)
-                        if current_p >= tp_price:
-                            exit_price = tp_price
-                    else:
-                        tp_price = ep * (1 - take_profit)
-                        if current_p <= tp_price:
-                            exit_price = tp_price
-
-                if exit_price is None and trail_stop is not None and sym in peak_prices:
-                    if is_long:
-                        ts_price = peak_prices[sym] * (1 - trail_stop)
-                        if current_p <= ts_price:
-                            exit_price = ts_price
-                    else:
-                        ts_price = peak_prices[sym] * (1 + trail_stop)
-                        if current_p >= ts_price:
-                            exit_price = ts_price
-
-            if exit_price is not None:
-                # Record trade
-                ret = (exit_price - ep) / ep if is_long else (ep - exit_price) / ep
-                factor = factors.get(sym, 1.0) if factor_col else 1.0
-                raw_exit = exit_price / factor if factor != 0 else exit_price
-                fee = abs(qty * raw_exit) * (fee_ratio + tax_ratio)
-                cash += qty * exit_price - fee if is_long else -qty * exit_price - fee
-                # For short: we initially received proceeds, now buy back
-                if not is_long:
-                    cash += qty * exit_price  # qty is negative
-                    # Correct: for short, closing means buying back
-                    # cash change = -|qty| * exit_price - fee (buying back costs money)
-                    # But we already have the short proceeds from entry.
-                    # Let's simplify: just track cash properly.
-                    pass
-
-                trade_records.append(
-                    {
-                        "symbol": sym,
-                        "entry_date": entry_dates.get(sym),
-                        "exit_date": current_date,
-                        "entry_price": ep,
-                        "exit_price": exit_price,
-                        "weight": 0.0,
-                        "return_pct": ret,
-                        "bars_held": bar_idx - entry_bars.get(sym, bar_idx),
-                    }
-                )
-                closed_by_stop.add(sym)
-                del positions[sym]
-                entry_prices.pop(sym, None)
-                entry_dates.pop(sym, None)
-                peak_prices.pop(sym, None)
-                entry_bars.pop(sym, None)
-
-        # Update trailing stop peak prices
-        if trail_stop is not None:
-            for sym, qty in positions.items():
-                if sym not in prices:
-                    continue
-                p = prices[sym]
-                if qty > 0:
-                    if sym in ohlc:
-                        p = ohlc[sym]["high"]
-                    peak_prices[sym] = max(peak_prices.get(sym, p), p)
-                elif qty < 0:
-                    if sym in ohlc:
-                        p = ohlc[sym]["low"]
-                    peak_prices[sym] = min(peak_prices.get(sym, p), p)
-
-        # 3. Execute pending T+1 rebalance
-        if pending_weights is not None and t_plus > 0:
-            cash, positions, entry_prices, entry_dates, peak_prices, entry_bars = _execute_rebalance(
-                pending_weights,
-                positions,
-                prices,
-                cash,
-                portfolio_value,
-                fee_ratio,
-                tax_ratio,
-                entry_prices,
-                entry_dates,
-                peak_prices,
-                entry_bars,
-                current_date,
-                bar_idx,
-                trade_records,
-                closed_by_stop,
-                factor_col,
-                factors,
-            )
-            pending_weights = None
-
-        # 4. Check if this is a rebalance date
-        current_weights: dict[str, float] = {}
-        for row in date_rows.iter_rows(named=True):
-            sym = row[symbol_col]
-            w = row[weight_col]
-            if w is not None:
-                current_weights[sym] = float(w)
-
-        should_rebalance = False
-        if resample is None:
-            # Rebalance only when weights change
-            if current_weights != prev_weights:
-                should_rebalance = True
-        else:
-            if current_date in rebalance_dates:
-                should_rebalance = True
-
-        if should_rebalance:
-            normalized = _normalize_weights(current_weights, position_limit)
-            if t_plus == 0:
-                cash, positions, entry_prices, entry_dates, peak_prices, entry_bars = _execute_rebalance(
-                    normalized,
-                    positions,
-                    prices,
-                    cash,
-                    portfolio_value,
-                    fee_ratio,
-                    tax_ratio,
-                    entry_prices,
-                    entry_dates,
-                    peak_prices,
-                    entry_bars,
-                    current_date,
-                    bar_idx,
-                    trade_records,
-                    closed_by_stop,
-                    factor_col,
-                    factors,
-                )
-            else:
-                pending_weights = normalized
-
-        prev_weights = current_weights
-
-        # 5. Record equity
-        position_value = sum(qty * prices.get(sym, 0.0) for sym, qty in positions.items())
-        portfolio_value = cash + position_value
-        equity_dates.append(current_date)
-        equity_values.append(portfolio_value)
-
-    # --- Build results ---
+    # Equity curve: (date, cumulative_return)
+    equity_dates = portfolio.timestamps
+    equity_values = portfolio.equity_curve
     equity_df = pl.DataFrame(
         {
             "date": equity_dates,
@@ -505,8 +418,21 @@ def backtest_weights(
         }
     )
 
-    if trade_records:
-        trades_df = pl.DataFrame(trade_records)
+    # Trade mapping: Engine trades → weight backtest trade schema
+    engine_trades = engine_results.trades
+    if len(engine_trades) > 0:
+        # Map column names: asset→symbol, entry_timestamp→entry_date, exit_timestamp→exit_date
+        trade_cols: dict[str, list[Any]] = {
+            "symbol": engine_trades["asset"].to_list(),
+            "entry_date": engine_trades["entry_timestamp"].to_list(),
+            "exit_date": engine_trades["exit_timestamp"].to_list(),
+            "entry_price": engine_trades["entry_price"].to_list(),
+            "exit_price": engine_trades["exit_price"].to_list(),
+            "weight": [0.0] * len(engine_trades),  # weight at exit is not tracked per-trade
+            "return_pct": engine_trades["return_pct"].to_list(),
+            "bars_held": engine_trades["bars_held"].to_list(),
+        }
+        trades_df = pl.DataFrame(trade_cols)
     else:
         trades_df = pl.DataFrame(
             schema={
@@ -521,147 +447,18 @@ def backtest_weights(
             }
         )
 
-    # Calculate metrics using existing infrastructure
-    metrics_equity_df = pl.DataFrame(
-        {
-            "timestamp": equity_dates,
-            "equity": equity_values,
-        },
-        strict=False,
-    )
-
-    metrics_dict = calculate_metrics(metrics_equity_df, initial_capital)
-    metrics_dict["initial_equity"] = initial_capital
-    metrics_dict["final_equity"] = equity_values[-1] if equity_values else initial_capital
-
-    # Trade-level metrics
-    if len(trades_df) > 0 and "return_pct" in trades_df.columns:
-        pct_col = trades_df["return_pct"]
-        metrics_dict["best_trade_pct"] = float(pct_col.max())  # type: ignore[arg-type]
-        metrics_dict["worst_trade_pct"] = float(pct_col.min())  # type: ignore[arg-type]
-        metrics_dict["avg_trade_pct"] = float(pct_col.mean())  # type: ignore[arg-type]
-        if "bars_held" in trades_df.columns:
-            bars_col = trades_df["bars_held"]
-            metrics_dict["max_trade_duration"] = float(bars_col.max())  # type: ignore[arg-type]
-            metrics_dict["avg_trade_duration"] = float(bars_col.mean())  # type: ignore[arg-type]
-        else:
-            metrics_dict["max_trade_duration"] = 0.0
-            metrics_dict["avg_trade_duration"] = 0.0
-    else:
-        for k in ("best_trade_pct", "worst_trade_pct", "avg_trade_pct", "max_trade_duration", "avg_trade_duration"):
-            metrics_dict[k] = 0.0
-
-    trade_stats = TradeStats(
-        total_trades=len(trades_df),
-        win_rate=len(trades_df.filter(pl.col("return_pct") > 0)) / len(trades_df) if len(trades_df) > 0 else 0.0,
-    )
-    metrics_dict["trades"] = trades_df
-    metrics_dict["win_rate"] = trade_stats.win_rate
-
-    bm = _backtest_metrics_from_dict(metrics_dict, trade_stats)
-
-    # Build next_actions (Feature 6)
-    next_actions = _compute_next_actions_from_state(positions, prev_weights, prices)
+    # Build next_actions from final portfolio state
+    positions = dict(portfolio.positions)
+    latest_weights = strategy._latest_weights
+    current_prices = dict(portfolio._current_prices)
+    next_actions = _compute_next_actions_from_state(positions, latest_weights, current_prices)
 
     return WeightBacktestResult(
         equity=equity_df,
         trades=trades_df,
-        metrics=bm,
+        metrics=engine_results,
         next_actions=next_actions,
     )
-
-
-def _execute_rebalance(
-    target_weights: dict[str, float],
-    positions: dict[str, float],
-    prices: dict[str, float],
-    cash: float,
-    portfolio_value: float,
-    fee_ratio: float,
-    tax_ratio: float,
-    entry_prices: dict[str, float],
-    entry_dates: dict[str, Any],
-    peak_prices: dict[str, float],
-    entry_bars: dict[str, int],
-    current_date: Any,
-    bar_idx: int,
-    trade_records: list[dict[str, Any]],
-    closed_by_stop: set[str],
-    factor_col: str | None,
-    factors: dict[str, float],
-) -> tuple[float, dict[str, float], dict[str, float], dict[str, Any], dict[str, float], dict[str, int]]:
-    """Execute a rebalance from current positions to target weights.
-
-    Returns updated (cash, positions, entry_prices, entry_dates, peak_prices, entry_bars).
-    """
-    if portfolio_value <= 0:
-        return cash, positions, entry_prices, entry_dates, peak_prices, entry_bars
-
-    # All symbols involved
-    all_symbols = set(positions.keys()) | set(target_weights.keys())
-
-    for sym in all_symbols:
-        if sym in closed_by_stop:
-            continue
-
-        target_w = target_weights.get(sym, 0.0)
-        target_value = portfolio_value * target_w
-        price = prices.get(sym)
-        if price is None or price <= 0:
-            continue
-
-        target_qty = target_value / price
-        current_qty = positions.get(sym, 0.0)
-        delta_qty = target_qty - current_qty
-
-        if abs(delta_qty) < 1e-10:
-            continue
-
-        # Fee on the delta
-        factor = factors.get(sym, 1.0) if factor_col else 1.0
-        raw_price = price / factor if factor != 0 else price
-        delta_value = abs(delta_qty) * raw_price
-        fee = delta_value * (fee_ratio + tax_ratio)
-
-        # Record trade for positions being closed or reduced
-        if current_qty != 0 and (target_qty == 0 or (current_qty > 0) != (target_qty > 0)):
-            # Full or partial close
-            ep = entry_prices.get(sym, price)
-            is_long = current_qty > 0
-            ret = (price - ep) / ep if is_long else (ep - price) / ep
-            trade_records.append(
-                {
-                    "symbol": sym,
-                    "entry_date": entry_dates.get(sym),
-                    "exit_date": current_date,
-                    "entry_price": ep,
-                    "exit_price": price,
-                    "weight": target_w,
-                    "return_pct": ret,
-                    "bars_held": bar_idx - entry_bars.get(sym, bar_idx),
-                }
-            )
-
-        # Update cash
-        cash -= delta_qty * price + fee
-
-        # Update position
-        if abs(target_qty) < 1e-10:
-            positions.pop(sym, None)
-            entry_prices.pop(sym, None)
-            entry_dates.pop(sym, None)
-            peak_prices.pop(sym, None)
-            entry_bars.pop(sym, None)
-        else:
-            if current_qty == 0 or (current_qty > 0) != (target_qty > 0):
-                # New position
-                entry_prices[sym] = price
-                entry_dates[sym] = current_date
-                entry_bars[sym] = bar_idx
-                peak_prices[sym] = price
-            positions[sym] = target_qty
-
-    return cash, positions, entry_prices, entry_dates, peak_prices, entry_bars
 
 
 def _compute_next_actions_from_state(
@@ -686,7 +483,7 @@ def _compute_next_actions_from_state(
 
     total_value = sum(abs(qty) * current_prices.get(s, 0.0) for s, qty in current_positions.items())
     if total_value == 0:
-        total_value = 1.0  # Avoid division by zero
+        total_value = 1.0
 
     records: list[dict[str, Any]] = []
     for sym in sorted(all_symbols):

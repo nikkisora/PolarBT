@@ -58,10 +58,11 @@ After adding a feature analyze the code changes based on the following pillars:
 ### Cleanup
 
 After finishing implementing, testing and reviewing the feature, always:
-1. Run ruff and mypy, fix all issues, even not related to what you worked on
-2. Put the summary of your work in the archive folder
-3. Add an entry to `CHANGELOG.md` under the `[Unreleased]` section, if there is already something written down add to it, don't overwrite
-4. Commit changes, don't commit files in a archive folder, respect .gitignore
+1. Update docs and examples, verify that they work
+2. Run ruff and mypy, fix all issues, even not related to what you worked on
+3. Put the summary of your work in the archive folder
+4. Add an entry to `CHANGELOG.md` under the `[Unreleased]` section, if there is already something written down add to it, don't overwrite
+5. Commit changes, don't commit files in a archive folder, respect .gitignore
 
 ## Module Structure
 
