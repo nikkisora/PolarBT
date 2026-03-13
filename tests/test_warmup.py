@@ -413,10 +413,7 @@ class TestWarmupWithMultiAsset:
 
             def preprocess(self, df: pl.DataFrame) -> pl.DataFrame:
                 return df.with_columns(
-                    [
-                        ind.sma("BTC_close", 20).alias("btc_sma"),
-                        ind.sma("ETH_close", 20).alias("eth_sma"),
-                    ]
+                    ind.sma("close", 20).over("symbol").alias("sma"),
                 )
 
             def next(self, ctx: BacktestContext) -> None:

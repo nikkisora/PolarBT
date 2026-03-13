@@ -830,8 +830,8 @@ def optimize_bayesian(
         ... )
     """
     try:
-        from skopt import Optimizer  # type: ignore[import-not-found]
-        from skopt.space import Integer, Real  # type: ignore[import-not-found]
+        from skopt import Optimizer
+        from skopt.space import Integer, Real
     except ImportError:
         raise ImportError(
             "scikit-optimize is required for Bayesian optimization. Install it with: pip install scikit-optimize"

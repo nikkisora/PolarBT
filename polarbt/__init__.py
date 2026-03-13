@@ -32,6 +32,7 @@ from polarbt.core import (
     Engine,
     Portfolio,
     Strategy,
+    WeightStrategy,
     merge_asset_dataframes,
     param,
     standardize_dataframe,
@@ -59,6 +60,7 @@ except ImportError:
 __version__ = "0.1.11"
 __all__ = [
     "Strategy",
+    "WeightStrategy",
     "param",
     "Portfolio",
     "Engine",

@@ -12,7 +12,7 @@ import gc
 import math
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Any
 
@@ -233,22 +233,100 @@ def merge_asset_dataframes(
     return merged, price_columns
 
 
+class _RowAccessor:
+    """Provides dual access to bar data: ``ctx.row["close"]`` (property) and ``ctx.row("BTC")`` (method).
+
+    In single-asset mode ``ctx.row`` behaves like a plain dict (backward-compatible).
+    In multi-asset mode ``ctx.row("BTC")`` returns the dict for a specific symbol,
+    while ``ctx.row`` (no call) returns the single symbol's dict if there is exactly one.
+    """
+
+    __slots__ = ("_data", "_symbols")
+
+    def __init__(self, data: dict[str, dict[str, Any]], symbols: list[str]) -> None:
+        self._data = data
+        self._symbols = symbols
+
+    # --- dict-like access (backward compat for single-asset ``ctx.row["close"]``) ---
+
+    def __getitem__(self, key: str) -> Any:
+        if len(self._symbols) == 1:
+            return self._data[self._symbols[0]][key]
+        raise KeyError(
+            f"Ambiguous row access with {len(self._symbols)} symbols. Use ctx.row('SYMBOL')['{key}'] instead."
+        )
+
+    def __contains__(self, key: object) -> bool:
+        if len(self._symbols) == 1:
+            return key in self._data[self._symbols[0]]
+        return False
+
+    def get(self, key: str, default: Any = None) -> Any:
+        if len(self._symbols) == 1:
+            return self._data[self._symbols[0]].get(key, default)
+        raise KeyError(
+            f"Ambiguous row access with {len(self._symbols)} symbols. Use ctx.row('SYMBOL').get('{key}') instead."
+        )
+
+    def keys(self) -> Any:
+        if len(self._symbols) == 1:
+            return self._data[self._symbols[0]].keys()
+        raise RuntimeError("Ambiguous: multiple symbols. Use ctx.row('SYMBOL').keys().")
+
+    def values(self) -> Any:
+        if len(self._symbols) == 1:
+            return self._data[self._symbols[0]].values()
+        raise RuntimeError("Ambiguous: multiple symbols. Use ctx.row('SYMBOL').values().")
+
+    def items(self) -> Any:
+        if len(self._symbols) == 1:
+            return self._data[self._symbols[0]].items()
+        raise RuntimeError("Ambiguous: multiple symbols. Use ctx.row('SYMBOL').items().")
+
+    # --- callable access (multi-asset ``ctx.row("BTC")``) ---
+
+    def __call__(self, symbol: str | None = None) -> dict[str, Any]:
+        if symbol is None:
+            if len(self._symbols) == 1:
+                return self._data[self._symbols[0]]
+            raise ValueError(
+                f"Must specify symbol when {len(self._symbols)} symbols are present. Available: {self._symbols}"
+            )
+        if symbol not in self._data:
+            raise KeyError(f"Symbol '{symbol}' not available this bar. Available: {self._symbols}")
+        return self._data[symbol]
+
+    def __repr__(self) -> str:
+        if len(self._symbols) == 1:
+            return repr(self._data[self._symbols[0]])
+        return f"_RowAccessor(symbols={self._symbols})"
+
+
 @dataclass
 class BacktestContext:
-    """
-    Context object passed to Strategy.next() on each bar.
+    """Context object passed to Strategy.next() on each bar.
 
     Attributes:
-        timestamp: Current timestamp
-        row: Dictionary containing current bar data (prices, indicators, etc.)
-        portfolio: Reference to the Portfolio instance
-        bar_index: Current bar index in the dataset
+        timestamp: Current timestamp.
+        bar_index: Current bar index in the dataset.
+        portfolio: Reference to the Portfolio instance.
+        symbols: Symbols with data on this bar.
+        data: Per-symbol bar data ``{symbol: {col: value, ...}}``.
+        row: Dual-access helper — use ``ctx.row["close"]`` in single-asset mode
+            or ``ctx.row("BTC")["close"]`` in multi-asset mode.
     """
 
     timestamp: Any
-    row: dict[str, Any]
-    portfolio: "Portfolio"
     bar_index: int
+    portfolio: "Portfolio"
+    symbols: list[str]
+    data: dict[str, dict[str, Any]]
+    row: _RowAccessor = field(default_factory=lambda: _RowAccessor({}, []))  # set by Engine
+
+    def __post_init__(self) -> None:
+        # Build _RowAccessor from data if not already set properly
+        if not self.row._symbols and self.data:
+            object.__setattr__(self, "row", _RowAccessor(self.data, self.symbols))
 
 
 class Portfolio:
@@ -1574,6 +1652,73 @@ class Portfolio:
         target_quantity = current_position + adjusted_delta
         return self.order_target(asset, target_quantity, limit_price)
 
+    def rebalance(self, weights: dict[str, float]) -> list[str | None]:
+        """Atomically rebalance the portfolio to target weights.
+
+        Computes all target quantities from a single ``get_value()`` snapshot,
+        then executes orders: closes positions not in the target, sells before
+        buys, and fee-adjusts buy quantities so total cost fits available cash.
+
+        Args:
+            weights: Mapping of symbol to target weight (fraction of portfolio value).
+                     Symbols not in *weights* are closed.
+
+        Returns:
+            List of order IDs (one per order placed, may contain None for skipped orders).
+        """
+        portfolio_value = self.get_value()
+        if portfolio_value <= 0:
+            return []
+
+        # Compute target quantities for all symbols
+        targets: dict[str, float] = {}
+        for sym, w in weights.items():
+            price = self._current_prices.get(sym)
+            if price is None or price <= 0:
+                continue
+            targets[sym] = portfolio_value * w / price
+
+        # Close positions not in target weights
+        sells: list[tuple[str, float]] = []
+        buys: list[tuple[str, float]] = []
+
+        # First: handle existing positions not in target (close them)
+        for sym in list(self.positions.keys()):
+            target_qty = targets.get(sym, 0.0)
+            current_qty = self.positions.get(sym, 0.0)
+            delta = target_qty - current_qty
+            if abs(delta) < 1e-10:
+                continue
+            if delta < 0:
+                sells.append((sym, delta))
+            else:
+                buys.append((sym, delta))
+
+        # Then: handle new positions (symbols in target but not in positions)
+        for sym, target_qty in targets.items():
+            if sym in self.positions:
+                continue
+            delta = target_qty
+            if abs(delta) < 1e-10:
+                continue
+            if delta < 0:
+                sells.append((sym, delta))
+            else:
+                buys.append((sym, delta))
+
+        # Execute sells first (frees cash), then buys
+        order_ids: list[str | None] = []
+        for sym, delta in sells:
+            order_ids.append(self.order(sym, delta))
+
+        # Fee-adjust buy quantities
+        for sym, delta in buys:
+            price = self._current_prices.get(sym, 0.0)
+            adjusted = self._estimate_fee_adjusted_quantity(delta, price)
+            order_ids.append(self.order(sym, adjusted))
+
+        return order_ids
+
     def close_position(self, asset: str, limit_price: float | None = None) -> str | None:
         """
         Close entire position in an asset.
@@ -2331,6 +2476,43 @@ class Strategy(ABC):
         pass
 
 
+class WeightStrategy(Strategy):
+    """Strategy that expresses positions as target weights per symbol.
+
+    Subclasses implement ``get_weights()`` instead of ``next()``.
+    On each bar the returned weights are passed to ``Portfolio.rebalance()``,
+    which uses the unified order execution path (commissions, slippage,
+    stop-loss/take-profit, leverage all apply).
+
+    Example::
+
+        class EqualWeight(WeightStrategy):
+            def preprocess(self, df):
+                return df
+
+            def get_weights(self, ctx):
+                n = len(ctx.symbols)
+                return {sym: 1.0 / n for sym in ctx.symbols}
+    """
+
+    @abstractmethod
+    def get_weights(self, ctx: BacktestContext) -> dict[str, float]:
+        """Return target portfolio weights for each symbol.
+
+        Args:
+            ctx: Current bar context.
+
+        Returns:
+            Mapping of symbol to target weight (fraction of portfolio value).
+        """
+        ...
+
+    def next(self, ctx: BacktestContext) -> None:
+        """Execute rebalance based on ``get_weights()``."""
+        weights = self.get_weights(ctx)
+        ctx.portfolio.rebalance(weights)
+
+
 class Engine:
     """
     Backtesting engine that executes the strategy simulation.
@@ -2416,73 +2598,103 @@ class Engine:
         self.warmup = warmup
         self.order_delay = order_delay
 
-        # Handle dict of dataframes or single dataframe
-        if isinstance(data, dict):
-            # Merge multiple asset dataframes
-            self.data, auto_price_columns = merge_asset_dataframes(data)
-            # Use auto-detected price columns if not specified
-            if price_columns is None:
-                self.price_columns = auto_price_columns
-            else:
-                self.price_columns = price_columns
-        else:
-            # Single dataframe - standardize it
-            self.data = standardize_dataframe(data)
+        # --- Normalize input to long format ---
+        # _long_data: long-format DataFrame with 'symbol' column (internal canonical form)
+        # self.data / self.price_columns: preserved for backward-compat _calculate_results()
 
-            # If no price columns specified, assume single asset with "close" column
-            if price_columns is None:
-                # Try to detect available price column
-                if "close" in self.data.columns:
-                    self.price_columns = {"asset": "close"}
-                else:
-                    # Find first numeric column
-                    numeric_cols = [
-                        c
-                        for c in self.data.columns
-                        if self.data[c].dtype in [pl.Float64, pl.Float32, pl.Int64, pl.Int32]
-                    ]
-                    if numeric_cols:
-                        self.price_columns = {"asset": numeric_cols[0]}
-                    else:
-                        raise ValueError("No price columns found in data")
+        if isinstance(data, dict):
+            # Form B: dict[str, pl.DataFrame] -> tag each DF and concat vertically
+            frames: list[pl.DataFrame] = []
+            for asset_name, asset_df in data.items():
+                sdf = standardize_dataframe(asset_df)
+                sdf = sdf.with_columns(pl.lit(asset_name).alias("symbol"))
+                frames.append(sdf)
+            self._long_data: pl.DataFrame = pl.concat(frames, how="diagonal_relaxed")
+            if "timestamp" in self._long_data.columns:
+                self._long_data = self._long_data.sort(["timestamp", "symbol"])
+
+            # Legacy wide-format for _calculate_results buy-hold
+            self.data, auto_price_columns = merge_asset_dataframes(data)
+            self.price_columns = price_columns if price_columns is not None else auto_price_columns
+        else:
+            sdf = standardize_dataframe(data)
+
+            if "symbol" in sdf.columns:
+                # Form C: already long format
+                self._long_data = sdf
+                if "timestamp" in self._long_data.columns:
+                    self._long_data = self._long_data.sort(["timestamp", "symbol"])
+                # Legacy: store as-is, detect first symbol's close for buy-hold
+                self.data = sdf
+                self.price_columns = price_columns if price_columns is not None else {"_first_": "close"}
             else:
-                self.price_columns = price_columns
+                # Form A: single-asset DataFrame -> add symbol="asset"
+                sdf = sdf.with_columns(pl.lit("asset").alias("symbol"))
+                self._long_data = sdf
+
+                self.data = sdf
+                if price_columns is None:
+                    if "close" in sdf.columns:
+                        self.price_columns = {"asset": "close"}
+                    else:
+                        numeric_cols = [
+                            c for c in sdf.columns if sdf[c].dtype in [pl.Float64, pl.Float32, pl.Int64, pl.Int32]
+                        ]
+                        if numeric_cols:
+                            self.price_columns = {"asset": numeric_cols[0]}
+                        else:
+                            raise ValueError("No price columns found in data")
+                else:
+                    self.price_columns = price_columns
 
         self.portfolio: Portfolio | None = None
         self.results: BacktestMetrics | None = None
         self.processed_data: pl.DataFrame | None = None
 
     def _calculate_auto_warmup(self, df: pl.DataFrame) -> int:
-        """Calculate automatic warmup period by finding the first row where all columns are non-null.
+        """Calculate automatic warmup period by finding the first timestamp where all columns are non-null.
 
-        This method finds the first bar where all indicators and data are ready.
-        Excludes timestamp columns from the check.
+        For long-format data, this checks per-symbol rows and finds the first
+        timestamp index where every symbol has all columns non-null.
 
         Args:
-            df: Preprocessed DataFrame with indicators
+            df: Preprocessed long-format DataFrame with indicators.
 
         Returns:
-            Integer warmup period (number of bars to skip before executing strategy)
-
-        Example:
-            If indicators need 20 bars to warm up, this will return 20.
+            Integer warmup period (number of timestamp groups to skip).
         """
-        timestamp_cols = {"timestamp", "date", "datetime", "time", "dt", "_index"}
-        cols_to_check = [col for col in df.columns if col not in timestamp_cols]
+        skip_cols = {"timestamp", "date", "datetime", "time", "dt", "_index", "symbol"}
+        cols_to_check = [col for col in df.columns if col not in skip_cols]
 
         if not cols_to_check:
             return 0
 
-        # Build a single boolean mask: True where every checked column is non-null
-        all_valid = df.select(pl.all_horizontal([pl.col(col).is_not_null() for col in cols_to_check]).alias("valid"))[
-            "valid"
-        ]
+        # Add per-row validity flag
+        df_with_valid = df.with_columns(
+            pl.all_horizontal([pl.col(col).is_not_null() for col in cols_to_check]).alias("_all_valid")
+        )
 
-        # Fast vectorized lookup instead of row-by-row iteration
-        if not all_valid.any():
-            return max(0, len(df) - 1)
+        # Detect timestamp column
+        ts_col = None
+        for candidate in ("timestamp", "date", "time", "_index"):
+            if candidate in df.columns:
+                ts_col = candidate
+                break
 
-        return int(all_valid.arg_max())  # type: ignore[arg-type]
+        if ts_col is None or "symbol" not in df.columns:
+            # Fallback: flat row-level check (single symbol or no grouping)
+            all_valid = df_with_valid["_all_valid"]
+            if not all_valid.any():
+                n_unique = df[ts_col].n_unique() if ts_col else len(df)
+                return max(0, n_unique - 1)
+            return int(all_valid.arg_max())  # type: ignore[arg-type]
+
+        # For multi-symbol: all symbols must be valid on a given timestamp
+        ts_valid = df_with_valid.group_by(ts_col, maintain_order=True).agg(pl.col("_all_valid").all().alias("ts_valid"))
+        valid_series = ts_valid["ts_valid"]
+        if not valid_series.any():
+            return max(0, len(ts_valid) - 1)
+        return int(valid_series.arg_max())  # type: ignore[arg-type]
 
     def _clear_portfolio(self) -> None:
         """Eagerly release large lists inside the current portfolio.
@@ -2558,13 +2770,9 @@ class Engine:
             factor_column=self.factor_column,
         )
 
-        # Preprocess data using strategy
-        processed_data = self.strategy.preprocess(self.data)
+        # Preprocess data using strategy (long-format)
+        processed_data = self.strategy.preprocess(self._long_data)
         self.processed_data = processed_data
-
-        # Calculate warmup period if set to "auto"
-        warmup_periods: int
-        warmup_periods = self._calculate_auto_warmup(processed_data) if self.warmup == "auto" else self.warmup  # type: ignore
 
         # Ensure we have a timestamp column
         timestamp_col = None
@@ -2575,80 +2783,75 @@ class Engine:
         elif "time" in processed_data.columns:
             timestamp_col = "time"
         else:
-            # Use index as timestamp
+            # Use row index as timestamp — assign per-symbol group rank
             processed_data = processed_data.with_row_index("_index")
             timestamp_col = "_index"
+
+        # Calculate warmup period if set to "auto"
+        warmup_periods: int
+        warmup_periods = self._calculate_auto_warmup(processed_data) if self.warmup == "auto" else self.warmup  # type: ignore
 
         # Call strategy initialization
         self.strategy.on_start(self.portfolio)
 
-        # Main event loop - iterate through bars
-        for idx, row_dict in enumerate(processed_data.iter_rows(named=True)):
-            # Extract current prices for all assets
-            current_prices: dict[str, float] = {
-                asset: float(row_dict.get(price_col, 0.0)) if row_dict.get(price_col) is not None else 0.0
-                for asset, price_col in self.price_columns.items()
-            }
+        # --- Main event loop: iterate by timestamp over long-format data ---
+        # Group by timestamp to get all symbols' data per bar
+        ts_col_series = processed_data[timestamp_col]
+        unique_timestamps = ts_col_series.unique(maintain_order=True).sort()
 
-            # Extract OHLC data for all assets
+        # Pre-partition data by timestamp for efficient lookup
+        grouped = processed_data.partition_by(timestamp_col, as_dict=True, maintain_order=True)
+
+        for idx, ts_value in enumerate(unique_timestamps):
+            group_key = ts_value
+            group_df = grouped.get(group_key)
+            if group_df is None:
+                # partition_by with single column returns scalar keys
+                # Try tuple key as fallback
+                group_df = grouped.get((group_key,))
+            if group_df is None:
+                continue
+
+            current_prices: dict[str, float] = {}
             ohlc_data: dict[str, dict[str, float]] = {}
-            for asset in self.price_columns:
-                # Try to find OHLC columns for this asset
-                # Support both prefixed (BTC_open) and unprefixed (open) formats
-                if asset == "asset":
-                    # Single asset case - use unprefixed columns
-                    ohlc_data[asset] = {
-                        "open": float(row_dict.get("open", current_prices[asset]))
-                        if row_dict.get("open") is not None
-                        else current_prices[asset],
-                        "high": float(row_dict.get("high", current_prices[asset]))
-                        if row_dict.get("high") is not None
-                        else current_prices[asset],
-                        "low": float(row_dict.get("low", current_prices[asset]))
-                        if row_dict.get("low") is not None
-                        else current_prices[asset],
-                        "close": current_prices[asset],
-                    }
-                else:
-                    # Multi-asset case - try prefixed columns
-                    ohlc_data[asset] = {
-                        "open": float(row_dict.get(f"{asset}_open", current_prices[asset]))
-                        if row_dict.get(f"{asset}_open") is not None
-                        else current_prices[asset],
-                        "high": float(row_dict.get(f"{asset}_high", current_prices[asset]))
-                        if row_dict.get(f"{asset}_high") is not None
-                        else current_prices[asset],
-                        "low": float(row_dict.get(f"{asset}_low", current_prices[asset]))
-                        if row_dict.get(f"{asset}_low") is not None
-                        else current_prices[asset],
-                        "close": current_prices[asset],
-                    }
+            bar_data: dict[str, dict[str, Any]] = {}
 
-            # Get timestamp
-            current_timestamp = row_dict.get(timestamp_col)
+            for row_dict in group_df.iter_rows(named=True):
+                sym = row_dict.get("symbol", "asset")
+                close_val = row_dict.get("close")
+                close_price = float(close_val) if close_val is not None else 0.0
+                current_prices[sym] = close_price
+
+                ohlc_data[sym] = {
+                    "open": float(row_dict["open"]) if row_dict.get("open") is not None else close_price,
+                    "high": float(row_dict["high"]) if row_dict.get("high") is not None else close_price,
+                    "low": float(row_dict["low"]) if row_dict.get("low") is not None else close_price,
+                    "close": close_price,
+                }
+                bar_data[sym] = row_dict
+
+            current_timestamp = ts_value
 
             # Update factor data for commission calculation on raw prices
             if self.factor_column is not None:
-                for asset in self.price_columns:
-                    # Support both prefixed (BTC_factor) and unprefixed (factor) format
-                    if asset == "asset":
-                        factor_val = row_dict.get(self.factor_column)
-                    else:
-                        factor_val = row_dict.get(f"{asset}_{self.factor_column}")
-                        if factor_val is None:
-                            factor_val = row_dict.get(self.factor_column)
+                for sym, row_dict in bar_data.items():
+                    factor_val = row_dict.get(self.factor_column)
                     if factor_val is not None:
-                        self.portfolio._factors[asset] = float(factor_val)
+                        self.portfolio._factors[sym] = float(factor_val)
 
             # Update portfolio with current prices and OHLC data
             self.portfolio.update_prices(current_prices, idx, ohlc_data, current_timestamp)
 
             # Create context for strategy
+            symbols_list = list(bar_data.keys())
+            row_accessor = _RowAccessor(bar_data, symbols_list)
             ctx = BacktestContext(
                 timestamp=current_timestamp,
-                row=row_dict,
-                portfolio=self.portfolio,
                 bar_index=idx,
+                portfolio=self.portfolio,
+                symbols=symbols_list,
+                data=bar_data,
+                row=row_accessor,
             )
 
             # Call strategy logic (skip warmup period)
@@ -2703,19 +2906,23 @@ class Engine:
         # Return (Ann.) — same as CAGR, kept as explicit alias
         metrics["return_annualized"] = metrics.get("cagr", 0.0)
 
-        # Buy & Hold return: compare first vs last close price
-        first_asset = next(iter(self.price_columns), None)
-        if first_asset is not None:
-            price_col = self.price_columns[first_asset]
-            prices = self.data[price_col].drop_nulls()
+        # Buy & Hold return: compare first vs last close price of first symbol
+        metrics["buy_hold_return"] = 0.0
+        if "symbol" in self._long_data.columns and "close" in self._long_data.columns:
+            first_sym = self._long_data["symbol"][0]
+            sym_prices = self._long_data.filter(pl.col("symbol") == first_sym)["close"].drop_nulls()
+            if len(sym_prices) >= 2:
+                first_price = float(sym_prices[0])
+                last_price = float(sym_prices[-1])
+                if first_price != 0:
+                    metrics["buy_hold_return"] = (last_price - first_price) / first_price
+        elif "close" in self._long_data.columns:
+            prices = self._long_data["close"].drop_nulls()
             if len(prices) >= 2:
                 first_price = float(prices[0])
                 last_price = float(prices[-1])
-                metrics["buy_hold_return"] = (last_price - first_price) / first_price if first_price != 0 else 0.0
-            else:
-                metrics["buy_hold_return"] = 0.0
-        else:
-            metrics["buy_hold_return"] = 0.0
+                if first_price != 0:
+                    metrics["buy_hold_return"] = (last_price - first_price) / first_price
 
         # Trade-level detailed metrics from the trades DataFrame
         if len(trades_df) > 0:

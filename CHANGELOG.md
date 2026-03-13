@@ -1,5 +1,21 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- Unified long-format data model: Engine accepts single DF, dict of DFs, or long-format DF with `symbol` column
+- `BacktestContext.symbols`, `BacktestContext.data`, and `BacktestContext.row()` method for multi-asset access
+- `Portfolio.rebalance(weights)` for atomic weight-based portfolio rebalancing
+- `WeightStrategy` base class for weight-driven strategies via `get_weights()`
+- 28 new tests for long-format engine, rebalance, and WeightStrategy
+
+### Fixed
+- Multi-asset OHLC data preserved (previously `merge_asset_dataframes()` dropped open/high/low)
+
+### Changed
+- Engine internally normalizes all input to long-format; strategies receive long-format in `preprocess()`
+- Multi-asset indicators now use standard column names with `.over("symbol")` instead of `BTC_close` convention
+
 ## [0.1.11] - 2026-03-09
 
 ### Fixed

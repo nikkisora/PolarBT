@@ -278,12 +278,17 @@ class TestEngine:
         assert results.total_return > 0
 
     def test_multiple_assets(self):
-        """Test engine with multiple assets."""
-        data = pl.DataFrame(
+        """Test engine with multiple assets via dict input (Form B)."""
+        btc_df = pl.DataFrame(
             {
                 "timestamp": range(50),
-                "btc_close": [50000 + i * 100 for i in range(50)],
-                "eth_close": [3000 + i * 10 for i in range(50)],
+                "close": [50000.0 + i * 100 for i in range(50)],
+            }
+        )
+        eth_df = pl.DataFrame(
+            {
+                "timestamp": range(50),
+                "close": [3000.0 + i * 10 for i in range(50)],
             }
         )
 
@@ -297,7 +302,7 @@ class TestEngine:
                 ctx.portfolio.order_target_percent("ETH", 0.5)
 
         strategy = MultiAssetStrategy()
-        engine = Engine(strategy, data, price_columns={"BTC": "btc_close", "ETH": "eth_close"})
+        engine = Engine(strategy, {"BTC": btc_df, "ETH": eth_df})
         results = engine.run()
 
         assert results is not None
@@ -312,11 +317,13 @@ class TestBacktestContext:
         portfolio = Portfolio()
         portfolio.update_prices({"BTC": 50000})
 
+        bar_data = {"asset": {"close": 100, "sma": 95}}
         ctx = BacktestContext(
             timestamp=0,
-            row={"close": 100, "sma": 95},
-            portfolio=portfolio,
             bar_index=10,
+            portfolio=portfolio,
+            symbols=["asset"],
+            data=bar_data,
         )
 
         assert ctx.timestamp == 0
