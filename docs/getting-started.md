@@ -180,7 +180,7 @@ print(f"Best slow_period: {best['slow_period']}")
 
 ## Multi-Asset Strategies
 
-Pass a dict of DataFrames for multi-asset backtesting:
+Pass a dict of DataFrames for multi-asset backtesting. The engine normalizes all inputs to long format internally, preserving full OHLC data per symbol.
 
 ```python
 data = {
@@ -191,7 +191,43 @@ data = {
 results = backtest(MyMultiAssetStrategy, data, params={...})
 ```
 
-Columns are automatically prefixed (e.g., `BTC_close`, `ETH_close`).
+In `preprocess()`, use `.over("symbol")` so indicators are computed per-symbol:
+
+```python
+def preprocess(self, df: pl.DataFrame) -> pl.DataFrame:
+    return df.with_columns(
+        ind.sma("close", 20).over("symbol").alias("sma_20"),
+    )
+```
+
+In `next()`, access per-symbol data with `ctx.row("SYMBOL")` and iterate over `ctx.symbols`:
+
+```python
+def next(self, ctx: BacktestContext) -> None:
+    for sym in ctx.symbols:
+        if ctx.row(sym)["close"] > ctx.row(sym)["sma_20"]:
+            ctx.portfolio.order_target_percent(sym, 0.3)
+```
+
+For single-asset strategies, `ctx.row["close"]` still works (backward-compatible).
+
+### WeightStrategy
+
+For weight-driven allocation, subclass `WeightStrategy` and implement `get_weights()`:
+
+```python
+from polarbt import WeightStrategy
+
+class EqualWeight(WeightStrategy):
+    def preprocess(self, df):
+        return df
+
+    def get_weights(self, ctx):
+        n = len(ctx.symbols)
+        return {sym: 1.0 / n for sym in ctx.symbols}
+```
+
+The engine calls `Portfolio.rebalance()` each bar with the returned weights.
 
 ## Weight-Based Backtesting
 

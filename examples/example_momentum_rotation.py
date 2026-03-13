@@ -6,6 +6,8 @@ Demonstrates:
 - Momentum-based asset ranking and rotation
 - Position sizing across multiple assets
 - Risk limits (max_position_size, max_total_exposure)
+- Long-format preprocess with .over("symbol")
+- ctx.row("SYMBOL") and ctx.symbols access
 """
 
 from datetime import datetime, timedelta
@@ -59,23 +61,21 @@ class MomentumRotation(Strategy):
 
     lookback = param(20)
     top_n = param(2)
-    asset_names = ["BTC", "ETH", "SOL", "BNB"]
 
     def preprocess(self, df: pl.DataFrame) -> pl.DataFrame:
-        cols = []
-        for name in self.asset_names:
-            cols.append(ind.returns(f"{name}_close", self.lookback).alias(f"{name}_momentum"))
-        return df.with_columns(cols)
+        return df.with_columns(
+            ind.returns("close", self.lookback).over("symbol").alias("momentum"),
+        )
 
     def next(self, ctx: BacktestContext) -> None:
         # Collect momentum scores
         scores: dict[str, float] = {}
-        for name in self.asset_names:
-            mom = ctx.row.get(f"{name}_momentum")
+        for name in ctx.symbols:
+            mom = ctx.row(name).get("momentum")
             if mom is not None:
                 scores[name] = mom
 
-        if len(scores) < len(self.asset_names):
+        if len(scores) < len(ctx.symbols):
             return
 
         # Rank by momentum (descending)
@@ -85,7 +85,7 @@ class MomentumRotation(Strategy):
         # Equal-weight allocation to top assets (0.95 to leave room for commission)
         weight = 0.95 / self.top_n
 
-        for name in self.asset_names:
+        for name in ctx.symbols:
             if name in top_assets:
                 ctx.portfolio.order_target_percent(name, weight)
             else:

@@ -11,10 +11,20 @@ Base class for all strategies.
 | Method | Description |
 |---|---|
 | `__init__(**params)` | Initialize with strategy parameters (accessible via `self.params`) |
-| `preprocess(df) -> pl.DataFrame` | **Required.** Add indicator columns using vectorized Polars ops. Called once. |
+| `preprocess(df) -> pl.DataFrame` | **Required.** Add indicator columns using vectorized Polars ops. Called once. Receives long-format DataFrame with `symbol` column. Use `.over("symbol")` for per-symbol indicators. |
 | `next(ctx: BacktestContext)` | **Required.** Called every bar after warmup. Place orders via `ctx.portfolio`. |
 | `on_start(portfolio)` | Optional. Called before first bar. |
 | `on_finish(portfolio)` | Optional. Called after last bar. |
+
+### `WeightStrategy`
+
+Subclass of `Strategy` for weight-driven allocation. Implement `get_weights()` instead of `next()`.
+
+| Method | Description |
+|---|---|
+| `get_weights(ctx) -> dict[str, float]` | **Required.** Return target weights per symbol. |
+| `preprocess(df) -> pl.DataFrame` | **Required.** Same as `Strategy.preprocess()`. |
+| `next(ctx)` | Auto-implemented: calls `get_weights()` then `portfolio.rebalance()`. |
 
 ### `param(default=None)`
 
@@ -32,10 +42,12 @@ Passed to `strategy.next()` each bar.
 
 | Attribute | Type | Description |
 |---|---|---|
-| `row` | `dict[str, Any]` | All column values for the current bar |
+| `row` | `_RowAccessor` | Bar data: `ctx.row["close"]` (single-asset) or `ctx.row("BTC")["close"]` (multi-asset) |
 | `portfolio` | `Portfolio` | Portfolio instance for placing orders |
 | `bar_index` | `int` | Current bar index (0-based) |
 | `timestamp` | `Any` | Current timestamp (if available) |
+| `symbols` | `list[str]` | Symbols with data on this bar |
+| `data` | `dict[str, dict]` | Per-symbol bar data `{symbol: {col: value, ...}}` |
 
 ### `Portfolio`
 
@@ -51,6 +63,7 @@ Manages cash, positions, orders, and risk management.
 | `order_target_value(asset, value)` | Target dollar value |
 | `close_position(asset)` | Close position for asset |
 | `close_all_positions()` | Close all positions |
+| `rebalance(weights)` | Atomically rebalance to target weights (sells first, then buys) |
 | `order_day(asset, quantity, ...)` | Day order with auto-expiry |
 | `order_gtc(asset, quantity, ...)` | Good-till-cancelled order |
 | `order_bracket(asset, quantity, stop_loss, take_profit, ...)` | Entry + SL + TP (OCO) |

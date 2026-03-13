@@ -16,8 +16,8 @@ A lightweight, high-performance backtesting library for trading strategy develop
 - **Margin & leverage** — configurable leverage, margin tracking, margin calls
 - **Commission models** — percentage, fixed, maker/taker, volume-tiered, custom
 - **Position sizing** — fixed, percent, fixed-risk, Kelly, volatility-based
-- **Weight-based backtesting** — declarative portfolio allocation with `backtest_weights()`, rebalance scheduling, stop-loss/take-profit, next-actions output
-- **Multi-asset** — pass a dict of DataFrames for portfolio strategies
+- **Weight-based backtesting** — declarative portfolio allocation with `backtest_weights()` or `WeightStrategy`, rebalance scheduling, stop-loss/take-profit, next-actions output
+- **Multi-asset** — pass a dict of DataFrames or a long-format DataFrame with `symbol` column; all OHLC data preserved
 - **Parallel optimization** — grid search, multi-objective Pareto, Bayesian optimization
 - **Walk-forward analysis** — rolling and anchored train/test splits
 - **Advanced analysis** — Monte Carlo simulation, look-ahead bias detection, permutation testing

@@ -15,6 +15,7 @@
 ### Changed
 - Engine internally normalizes all input to long-format; strategies receive long-format in `preprocess()`
 - Multi-asset indicators now use standard column names with `.over("symbol")` instead of `BTC_close` convention
+- Updated examples, README, and documentation to use new long-format multi-asset API
 
 ## [0.1.11] - 2026-03-09
 

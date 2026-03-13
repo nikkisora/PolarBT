@@ -76,11 +76,16 @@ Dataclass passed to `Strategy.next()` on each bar:
 | Attribute | Type | Description |
 |---|---|---|
 | `timestamp` | `Any` | Current bar timestamp |
-| `row` | `dict[str, Any]` | Current bar data (all columns as key-value pairs) |
+| `row` | `_RowAccessor` | Bar data — dict-like for single-asset, callable for multi-asset |
 | `portfolio` | `Portfolio` | Reference to the portfolio for placing orders |
 | `bar_index` | `int` | Current bar index (0-based) |
+| `symbols` | `list[str]` | Symbols with data on this bar |
+| `data` | `dict[str, dict]` | Per-symbol bar data `{symbol: {col: value, ...}}` |
 
-Access indicator values: `ctx.row["sma_fast"]`, `ctx.row.get("buy")`
+Access indicator values:
+- Single-asset: `ctx.row["sma_fast"]`, `ctx.row.get("buy")`
+- Multi-asset: `ctx.row("BTC")["close"]`, `ctx.row("ETH").get("momentum")`
+- Iterate symbols: `for sym in ctx.symbols: ctx.row(sym)["close"]`
 
 ### Engine
 
@@ -133,9 +138,25 @@ Engine(
 
 **Multi-asset input:**
 ```python
+# Form B: dict of DataFrames (each gets tagged with symbol and stacked vertically)
 engine = Engine(strategy, {"BTC": btc_df, "ETH": eth_df})
-# Merges into wide format: timestamp, BTC_close, ETH_close, ...
-# price_columns auto-detected: {"BTC": "BTC_close", "ETH": "ETH_close"}
+
+# Form C: single long-format DataFrame with 'symbol' column
+engine = Engine(strategy, long_format_df)
+```
+
+In `preprocess()`, use `.over("symbol")` for per-symbol indicators:
+```python
+def preprocess(self, df):
+    return df.with_columns(ind.sma("close", 20).over("symbol").alias("sma_20"))
+```
+
+In `next()`, use `ctx.row("BTC")["close"]` or iterate `ctx.symbols`:
+```python
+def next(self, ctx):
+    for sym in ctx.symbols:
+        if ctx.row(sym)["close"] > ctx.row(sym)["sma_20"]:
+            ctx.portfolio.order_target_percent(sym, 0.3)
 ```
 
 **`engine.run()` returns** a `BacktestMetrics` dataclass with fields:
@@ -166,6 +187,33 @@ engine = Engine(strategy, {"BTC": btc_df, "ETH": eth_df})
 
 Post-run attributes: `engine.portfolio`, `engine.processed_data`, `engine.results`
 
+### WeightStrategy
+
+Subclass of `Strategy` for weight-driven portfolio allocation. Implement `get_weights()` instead of `next()` — the engine automatically calls `Portfolio.rebalance()` with the returned weights each bar.
+
+```python
+class WeightStrategy(Strategy):
+    def get_weights(self, ctx: BacktestContext) -> dict[str, float]  # REQUIRED
+    def preprocess(self, df: pl.DataFrame) -> pl.DataFrame           # REQUIRED
+    # next() is auto-implemented: calls get_weights() then rebalance()
+```
+
+Example:
+```python
+from polarbt import WeightStrategy
+
+class MomentumWeight(WeightStrategy):
+    def preprocess(self, df):
+        return df.with_columns(ind.sma("close", 20).over("symbol").alias("sma"))
+
+    def get_weights(self, ctx):
+        weights = {}
+        for sym in ctx.symbols:
+            if ctx.row(sym).get("sma") and ctx.row(sym)["close"] > ctx.row(sym)["sma"]:
+                weights[sym] = 0.5
+        return weights
+```
+
 ### Portfolio
 
 Manages cash, positions, orders, and risk. Accessed via `ctx.portfolio` in `next()`.
@@ -182,6 +230,7 @@ portfolio.order_target_value(asset, target_value)              # order to reach 
 portfolio.order_target_percent(asset, target_percent)          # order to reach % of portfolio (fee-aware)
 portfolio.close_position(asset)                                # close entire position
 portfolio.close_all_positions()                                # close all positions
+portfolio.rebalance(weights)                                   # atomic rebalance to target weights
 
 # Order types
 portfolio.order_day(asset, quantity, limit_price=None, bars_valid=None)   # expires end of day
@@ -653,10 +702,28 @@ def next(self, ctx: BacktestContext) -> None:
 ```python
 engine = Engine(strategy, {"SPY": spy_df, "TLT": tlt_df, "GLD": gld_df})
 
-# In next():
-ctx.portfolio.order_target_percent("SPY", 0.5)
-ctx.portfolio.order_target_percent("TLT", 0.3)
-ctx.portfolio.order_target_percent("GLD", 0.2)
+# In preprocess(), use .over("symbol"):
+def preprocess(self, df):
+    return df.with_columns(ind.returns("close", 20).over("symbol").alias("momentum"))
+
+# In next(), use ctx.row("SYMBOL") and ctx.symbols:
+def next(self, ctx):
+    for sym in ctx.symbols:
+        mom = ctx.row(sym).get("momentum")
+        if mom and mom > 0:
+            ctx.portfolio.order_target_percent(sym, 0.3)
+```
+
+Or use `WeightStrategy` with `Portfolio.rebalance()` for atomic allocation:
+
+```python
+class EqualWeight(WeightStrategy):
+    def preprocess(self, df):
+        return df
+
+    def get_weights(self, ctx):
+        n = len(ctx.symbols)
+        return {sym: 1.0 / n for sym in ctx.symbols}
 ```
 
 ### Bracket orders with ATR-based stops
@@ -836,4 +903,11 @@ print(result)
 
 Engine expects lowercase OHLCV columns: `open`, `high`, `low`, `close`, `volume`, `timestamp`. Common variants are auto-detected (e.g. `Open`, `CLOSE`, `Date`, `Adj Close`).
 
-Use `standardize_dataframe(df)` explicitly if needed. For multi-asset, `merge_asset_dataframes({"BTC": df1, "ETH": df2})` creates prefixed columns (`BTC_close`, `ETH_close`, etc.).
+Use `standardize_dataframe(df)` explicitly if needed.
+
+**Data input forms:**
+- **Form A**: Single DataFrame (no `symbol` column) — treated as single-asset with symbol `"asset"`
+- **Form B**: `dict[str, pl.DataFrame]` — each DF is tagged with its key as symbol and stacked vertically
+- **Form C**: Single DataFrame with a `symbol` column — used as-is in long format
+
+All forms are normalized to long format internally. Full OHLC data is preserved per symbol (unlike the legacy `merge_asset_dataframes()` which only kept close).

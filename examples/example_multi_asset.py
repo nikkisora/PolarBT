@@ -3,7 +3,8 @@ Example demonstrating multi-asset strategy with features:
 - Multiple dataframes passed as dict
 - Automatic warmup period (default)
 - Order delay for realistic execution
-- Standardized column names
+- Long-format preprocess with .over("symbol")
+- ctx.row("SYMBOL") access pattern
 """
 
 # Create sample data for multiple assets with distinct trend regimes.
@@ -39,18 +40,15 @@ class MomentumPortfolio(Strategy):
     lookback = param(20)
 
     def preprocess(self, df: pl.DataFrame) -> pl.DataFrame:
-        """Calculate momentum indicators for all assets"""
+        """Calculate momentum indicators for all assets using .over('symbol')."""
         return df.with_columns(
-            [
-                ind.returns("BTC_close", self.lookback).alias("btc_momentum"),
-                ind.returns("ETH_close", self.lookback).alias("eth_momentum"),
-            ]
+            ind.returns("close", self.lookback).over("symbol").alias("momentum"),
         )
 
     def next(self, ctx: BacktestContext) -> None:
-        """Allocate to asset with strongest momentum"""
-        btc_mom = ctx.row.get("btc_momentum")
-        eth_mom = ctx.row.get("eth_momentum")
+        """Allocate to asset with strongest momentum."""
+        btc_mom = ctx.row("BTC").get("momentum")
+        eth_mom = ctx.row("ETH").get("momentum")
 
         # Allocate 100% to strongest momentum asset
         if btc_mom is None or eth_mom is None:
