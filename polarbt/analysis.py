@@ -323,8 +323,8 @@ def permutation_test(
         warmup: Warmup setting.
         order_delay: Order delay.
         params: Strategy parameters.
-        n_jobs: Number of parallel workers. Defaults to all CPUs for large datasets
-            (>50k rows), 1 otherwise. Set to 1 to disable parallelism.
+        n_jobs: Number of parallel workers (default 1, sequential).
+            Set to a higher value to enable parallelism.
         **engine_kwargs: Additional Engine keyword arguments.
 
     Returns:

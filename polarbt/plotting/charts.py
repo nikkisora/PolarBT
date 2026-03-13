@@ -12,6 +12,8 @@ from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
+from polarbt.core import DEFAULT_ASSET_NAME
+
 if TYPE_CHECKING:
     import plotly.graph_objects as go
 
@@ -531,21 +533,21 @@ def plot_returns_distribution(
 
 def _has_volume_column(data: pl.DataFrame, asset: str) -> bool:
     """Check if volume data is available."""
-    if asset == "asset":
+    if asset == DEFAULT_ASSET_NAME:
         return "volume" in data.columns
     return f"{asset}_volume" in data.columns
 
 
 def _get_volume_column(data: pl.DataFrame, asset: str) -> str:
     """Get the volume column name."""
-    if asset == "asset":
+    if asset == DEFAULT_ASSET_NAME:
         return "volume"
     return f"{asset}_volume"
 
 
 def _has_ohlc_columns(data: pl.DataFrame, asset: str) -> bool:
     """Check if full OHLC data is available."""
-    if asset == "asset":
+    if asset == DEFAULT_ASSET_NAME:
         return all(col in data.columns for col in ("open", "high", "low", "close"))
     prefix = f"{asset}_"
     return all(f"{prefix}{col}" in data.columns for col in ("open", "high", "low", "close"))
@@ -553,7 +555,7 @@ def _has_ohlc_columns(data: pl.DataFrame, asset: str) -> bool:
 
 def _get_ohlc_columns(data: pl.DataFrame, asset: str) -> dict[str, str]:
     """Get OHLC column name mapping."""
-    if asset == "asset":
+    if asset == DEFAULT_ASSET_NAME:
         return {"open": "open", "high": "high", "low": "low", "close": "close"}
     return {
         "open": f"{asset}_open",

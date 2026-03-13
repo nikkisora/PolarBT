@@ -16,13 +16,14 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Any
 
-import numpy as np
 import polars as pl
 
 from polarbt.commissions import CommissionModel, make_commission_model
 from polarbt.orders import Order, OrderStatus, OrderType
 from polarbt.results import BacktestMetrics, TradeStats, _backtest_metrics_from_dict
 from polarbt.trades import TradeTracker
+
+DEFAULT_ASSET_NAME = "asset"
 
 
 def _extract_date(timestamp: Any) -> date | None:
@@ -264,9 +265,7 @@ class _RowAccessor:
     def get(self, key: str, default: Any = None) -> Any:
         if len(self._symbols) == 1:
             return self._data[self._symbols[0]].get(key, default)
-        raise KeyError(
-            f"Ambiguous row access with {len(self._symbols)} symbols. Use ctx.row('SYMBOL').get('{key}') instead."
-        )
+        return default
 
     def keys(self) -> Any:
         if len(self._symbols) == 1:
@@ -1010,7 +1009,8 @@ class Portfolio:
             if (
                 effective_stop is not None
                 and ((is_long and open_price <= effective_stop) or (not is_long and open_price >= effective_stop))
-                or tp_price is not None
+            ) or (
+                tp_price is not None
                 and ((is_long and open_price >= tp_price) or (not is_long and open_price <= tp_price))
             ):
                 fill_price = open_price
@@ -2628,20 +2628,20 @@ class Engine:
                 self.data = sdf
                 self.price_columns = price_columns if price_columns is not None else {"_first_": "close"}
             else:
-                # Form A: single-asset DataFrame -> add symbol="asset"
-                sdf = sdf.with_columns(pl.lit("asset").alias("symbol"))
+                # Form A: single-asset DataFrame -> add symbol=DEFAULT_ASSET_NAME
+                sdf = sdf.with_columns(pl.lit(DEFAULT_ASSET_NAME).alias("symbol"))
                 self._long_data = sdf
 
                 self.data = sdf
                 if price_columns is None:
                     if "close" in sdf.columns:
-                        self.price_columns = {"asset": "close"}
+                        self.price_columns = {DEFAULT_ASSET_NAME: "close"}
                     else:
                         numeric_cols = [
                             c for c in sdf.columns if sdf[c].dtype in [pl.Float64, pl.Float32, pl.Int64, pl.Int32]
                         ]
                         if numeric_cols:
-                            self.price_columns = {"asset": numeric_cols[0]}
+                            self.price_columns = {DEFAULT_ASSET_NAME: numeric_cols[0]}
                         else:
                             raise ValueError("No price columns found in data")
                 else:
@@ -2817,7 +2817,7 @@ class Engine:
             bar_data: dict[str, dict[str, Any]] = {}
 
             for row_dict in group_df.iter_rows(named=True):
-                sym = row_dict.get("symbol", "asset")
+                sym = row_dict.get("symbol", DEFAULT_ASSET_NAME)
                 close_val = row_dict.get("close")
                 close_price = float(close_val) if close_val is not None else 0.0
                 current_prices[sym] = close_price
@@ -2928,8 +2928,6 @@ class Engine:
         if len(trades_df) > 0:
             pct_col = trades_df["return_pct"]
             bars_col = trades_df["bars_held"]
-            pnls = trades_df["pnl"].to_list()
-            n = len(pnls)
 
             metrics["best_trade_pct"] = float(pct_col.max())  # type: ignore[arg-type]
             metrics["worst_trade_pct"] = float(pct_col.min())  # type: ignore[arg-type]
@@ -2937,21 +2935,12 @@ class Engine:
             metrics["max_trade_duration"] = float(bars_col.max())  # type: ignore[arg-type]
             metrics["avg_trade_duration"] = float(bars_col.mean())  # type: ignore[arg-type]
 
-            avg_pnl = float(np.mean(pnls))
-            std_pnl = float(np.std(pnls, ddof=1)) if n > 1 else 0.0
-            metrics["expectancy"] = avg_pnl
-            metrics["sqn"] = float(np.sqrt(n) * avg_pnl / std_pnl) if std_pnl > 0 else 0.0
+            from polarbt.metrics import trade_level_metrics
 
-            winners = [p for p in pnls if p > 0]
-            losers = [p for p in pnls if p < 0]
-            if winners and losers:
-                wl_ratio = float(np.mean(winners)) / abs(float(np.mean(losers)))
-                win_rate_frac = len(winners) / n
-                metrics["kelly_criterion"] = win_rate_frac - (1 - win_rate_frac) / wl_ratio if wl_ratio > 0 else 0.0
-            elif winners:
-                metrics["kelly_criterion"] = 1.0
-            else:
-                metrics["kelly_criterion"] = 0.0
+            _tlm = trade_level_metrics(self.portfolio.trade_tracker.trades)
+            metrics["expectancy"] = _tlm["expectancy"]
+            metrics["sqn"] = _tlm["sqn"]
+            metrics["kelly_criterion"] = _tlm["kelly_criterion"]
         else:
             metrics["best_trade_pct"] = 0.0
             metrics["worst_trade_pct"] = 0.0

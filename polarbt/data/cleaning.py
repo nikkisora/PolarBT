@@ -46,7 +46,8 @@ def fill_gaps(
     # Generate complete range
     ts_min_raw = df[timestamp_column].min()
     ts_max_raw = df[timestamp_column].max()
-    assert isinstance(ts_min_raw, (datetime, date)) and isinstance(ts_max_raw, (datetime, date))
+    if not isinstance(ts_min_raw, (datetime, date)) or not isinstance(ts_max_raw, (datetime, date)):
+        raise TypeError(f"Timestamp column '{timestamp_column}' must be Date or Datetime, got min={type(ts_min_raw)}")
 
     full_range = pl.DataFrame({timestamp_column: pl.datetime_range(ts_min_raw, ts_max_raw, interval, eager=True)})
 
@@ -194,8 +195,6 @@ def _parse_interval_string(interval: str) -> timedelta:
 
 def _parse_date(date_str: str, dtype: pl.DataType) -> datetime | date:
     """Parse a date string into a type compatible with the timestamp column."""
-    from datetime import datetime
-
     dt = datetime.fromisoformat(date_str)
     if dtype == pl.Date:
         return dt.date()

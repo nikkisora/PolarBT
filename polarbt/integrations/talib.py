@@ -205,9 +205,14 @@ def talib_series(
 class TALibIndicators:
     """Namespace of TA-Lib backed indicator functions.
 
-    Each method returns a Polars expression (or tuple/dict of expressions)
-    that can be used in ``df.with_columns()``. The API mirrors
-    ``polarbt.indicators`` so you can swap implementations easily.
+    Each method returns a Polars expression (or dict of expressions for
+    multi-output indicators) that can be used in ``df.with_columns()``.
+
+    .. note::
+
+       Multi-output functions return ``dict[str, pl.Expr]`` while
+       ``polarbt.indicators`` returns tuples.  Single-output functions
+       share the same signature.
 
     Access via the module-level ``ta`` instance::
 

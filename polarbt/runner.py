@@ -959,7 +959,7 @@ def optimize_bayesian(
         evaluated += batch_size
 
         if verbose:
-            best_so_far = min(obj_values) if maximize else min(obj_values)
+            best_so_far = max(obj_values) if maximize else min(obj_values)
             actual_best = -best_so_far if maximize else best_so_far
             sys.stdout.write(f"\r  {evaluated}/{n_calls} evaluations | best {objective}: {actual_best:.4f}")
             sys.stdout.flush()

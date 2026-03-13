@@ -563,14 +563,11 @@ def trade_level_metrics(trades: list[Any]) -> dict[str, float]:
     pnls = [t.pnl for t in trades]
     n = len(pnls)
 
-    # Expectancy = average P&L per trade
     expectancy = float(np.mean(pnls))
 
-    # SQN = sqrt(n) * mean(pnl) / std(pnl)
     std_pnl = float(np.std(pnls, ddof=1)) if n > 1 else 0.0
     sqn = np.sqrt(n) * expectancy / std_pnl if std_pnl > 0 else 0.0
 
-    # Kelly criterion = W - (1-W)/R where W=win_rate, R=avg_win/avg_loss
     winners = [p for p in pnls if p > 0]
     losers = [p for p in pnls if p < 0]
     win_rate = len(winners) / n if n > 0 else 0.0
@@ -583,7 +580,6 @@ def trade_level_metrics(trades: list[Any]) -> dict[str, float]:
     else:
         kelly = 1.0 if winners else 0.0
 
-    # Consecutive wins/losses
     max_consec_wins = 0
     max_consec_losses = 0
     current_wins = 0

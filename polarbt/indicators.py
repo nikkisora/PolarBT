@@ -339,7 +339,6 @@ def hma(column: str, period: int) -> pl.Expr:
         wma_full = _calc_wma(arr, weights_full, wsum_full, period)
         diff = 2.0 * wma_half - wma_full
         result = _calc_wma(diff, weights_sqrt, wsum_sqrt, sqrt_period)
-        result[np.isnan(result)] = np.nan
         return pl.Series(result)
 
     return pl.col(column).map_batches(_hma, return_dtype=pl.Float64)
@@ -451,12 +450,23 @@ def supertrend(
 
         return pl.DataFrame({"_st_line": st, "_st_dir": direction})
 
-    st_line = pl.struct([high, low, close]).map_batches(
-        lambda s: _supertrend(s.struct.unnest())["_st_line"], return_dtype=pl.Float64
-    )
-    st_dir = pl.struct([high, low, close]).map_batches(
-        lambda s: _supertrend(s.struct.unnest())["_st_dir"], return_dtype=pl.Float64
-    )
+    _cache: dict[int, pl.DataFrame] = {}
+
+    def _cached_supertrend(s: pl.Series) -> pl.Series:
+        key = id(s)
+        if key not in _cache:
+            _cache[key] = _supertrend(s.struct.unnest())
+        return _cache[key]["_st_line"]
+
+    def _cached_supertrend_dir(s: pl.Series) -> pl.Series:
+        key = id(s)
+        if key not in _cache:
+            _cache[key] = _supertrend(s.struct.unnest())
+        return _cache[key]["_st_dir"]
+
+    struct_expr = pl.struct([high, low, close])
+    st_line = struct_expr.map_batches(_cached_supertrend, return_dtype=pl.Float64)
+    st_dir = struct_expr.map_batches(_cached_supertrend_dir, return_dtype=pl.Float64)
     return st_line, st_dir
 
 
@@ -529,15 +539,30 @@ def adx(
 
         return pl.DataFrame({"_adx": adx_arr, "_plus_di": plus_di, "_minus_di": minus_di})
 
-    adx_expr = pl.struct([high, low, close]).map_batches(
-        lambda s: _adx_calc(s.struct.unnest())["_adx"], return_dtype=pl.Float64
-    )
-    plus_di = pl.struct([high, low, close]).map_batches(
-        lambda s: _adx_calc(s.struct.unnest())["_plus_di"], return_dtype=pl.Float64
-    )
-    minus_di = pl.struct([high, low, close]).map_batches(
-        lambda s: _adx_calc(s.struct.unnest())["_minus_di"], return_dtype=pl.Float64
-    )
+    _cache: dict[int, pl.DataFrame] = {}
+
+    def _cached_adx(s: pl.Series) -> pl.Series:
+        key = id(s)
+        if key not in _cache:
+            _cache[key] = _adx_calc(s.struct.unnest())
+        return _cache[key]["_adx"]
+
+    def _cached_plus_di(s: pl.Series) -> pl.Series:
+        key = id(s)
+        if key not in _cache:
+            _cache[key] = _adx_calc(s.struct.unnest())
+        return _cache[key]["_plus_di"]
+
+    def _cached_minus_di(s: pl.Series) -> pl.Series:
+        key = id(s)
+        if key not in _cache:
+            _cache[key] = _adx_calc(s.struct.unnest())
+        return _cache[key]["_minus_di"]
+
+    struct_expr = pl.struct([high, low, close])
+    adx_expr = struct_expr.map_batches(_cached_adx, return_dtype=pl.Float64)
+    plus_di = struct_expr.map_batches(_cached_plus_di, return_dtype=pl.Float64)
+    minus_di = struct_expr.map_batches(_cached_minus_di, return_dtype=pl.Float64)
     return adx_expr, plus_di, minus_di
 
 
@@ -611,14 +636,6 @@ def cci(
     Returns:
         Polars expression for CCI.
     """
-
-    def _mean_dev(s: pl.Series) -> pl.Series:
-        arr = s.to_numpy().astype(np.float64)
-        out = np.full(len(arr), np.nan)
-        for i in range(period - 1, len(arr)):
-            window = arr[i - period + 1 : i + 1]
-            out[i] = np.mean(np.abs(window - np.mean(window)))
-        return pl.Series(out)
 
     # CCI = (TP - SMA(TP)) / (0.015 * mean_deviation)
     # We need to compute mean deviation via map_batches on the typical price

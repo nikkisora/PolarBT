@@ -546,6 +546,8 @@ class TestNoCleanupSequentialBacktests:
 
     def test_del_cleans_up_portfolio(self):
         """Engine.__del__ releases portfolio resources."""
+        import weakref
+
         df = _make_normal_data(n=200)
         engine = Engine(strategy=SimpleEMA(), data=df, warmup="auto")
         engine.run()
@@ -553,9 +555,15 @@ class TestNoCleanupSequentialBacktests:
         assert engine.portfolio is not None
         assert len(engine.portfolio.equity_curve) > 0
 
+        # Track whether portfolio is garbage collected
+        portfolio_ref = weakref.ref(engine.portfolio)
+
         # Trigger __del__ via explicit deletion
         del engine
         gc.collect()  # Ensure finalizer runs
+
+        # Portfolio should have been released
+        assert portfolio_ref() is None
 
     def test_rerun_clears_previous_portfolio(self):
         """Engine.run() clears the previous portfolio before allocating a new one."""

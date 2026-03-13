@@ -7,16 +7,29 @@
 - `BacktestContext.symbols`, `BacktestContext.data`, and `BacktestContext.row()` method for multi-asset access
 - `Portfolio.rebalance(weights)` for atomic weight-based portfolio rebalancing
 - `WeightStrategy` base class for weight-driven strategies via `get_weights()`
-- 28 new tests for long-format engine, rebalance, and WeightStrategy
+- `DEFAULT_ASSET_NAME` constant for the default single-asset symbol name
+- 56 new tests: indicator numerical correctness, standalone metrics coverage, core API coverage (order_target_value, close_all_positions, cancel_order, on_start/on_finish)
 
 ### Fixed
 - Multi-asset OHLC data preserved (previously `merge_asset_dataframes()` dropped open/high/low)
+- Operator precedence in stop/TP open-bar breach check now uses explicit parentheses
+- `_RowAccessor.get()` returns default value in multi-symbol mode instead of raising `KeyError`
+- Bayesian optimizer verbose display: `max(obj_values)` used when `maximize=True` (was identical to minimize branch)
+- `assert` replaced with `raise ValueError`/`RuntimeError` in `weight_backtest.py` and `data/cleaning.py`
+- `test_del_cleans_up_portfolio` now uses `weakref` to verify actual cleanup
 
 ### Changed
 - Engine internally normalizes all input to long-format; strategies receive long-format in `preprocess()`
 - Multi-asset indicators now use standard column names with `.over("symbol")` instead of `BTC_close` convention
 - Updated examples, README, and documentation to use new long-format multi-asset API
 - `backtest_weights()` rewritten as thin wrapper around `_DataFrameWeightStrategy` + `Engine`, eliminating ~600 lines of duplicated engine logic
+- SuperTrend and ADX indicators use per-call cache to avoid redundant computation (was 2x and 3x respectively)
+- Engine `_calculate_results` now delegates to `metrics.trade_level_metrics()` instead of duplicating expectancy/SQN/Kelly logic
+- TA-Lib docstring clarified: multi-output functions return `dict[str, pl.Expr]` (differs from native tuple API)
+- `permutation_test` docstring corrected: `n_jobs` defaults to 1 (was incorrectly documented as auto-detecting)
+
+### Removed
+- Dead code: unused `_mean_dev` function in `indicators.py`, no-op `NaN` assignment in `hma`, redundant inline import in `data/cleaning.py`, unused `numpy` import in `core.py`
 
 ## [0.1.11] - 2026-03-09
 

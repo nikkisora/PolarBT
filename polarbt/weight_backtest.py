@@ -406,7 +406,8 @@ def backtest_weights(
 
     # --- Build WeightBacktestResult ---
     portfolio = engine.portfolio
-    assert portfolio is not None
+    if portfolio is None:
+        raise RuntimeError("Engine did not initialize a portfolio; backtest produced no results")
 
     # Equity curve: (date, cumulative_return)
     equity_dates = portfolio.timestamps
