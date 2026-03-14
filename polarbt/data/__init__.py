@@ -1,7 +1,8 @@
-"""Data utilities for validation, cleaning, and resampling OHLCV data."""
+"""Data utilities for validation, cleaning, resampling, and trade aggregation."""
 
 from polarbt.data.cleaning import adjust_splits, clip_outliers, drop_zero_volume, fill_gaps
 from polarbt.data.resampling import resample_ohlcv
+from polarbt.data.trades import aggregate_trades, aggregate_trades_by_count, validate_trades
 from polarbt.data.validation import (
     ValidationResult,
     validate,
@@ -27,4 +28,7 @@ __all__ = [
     "drop_zero_volume",
     "clip_outliers",
     "resample_ohlcv",
+    "validate_trades",
+    "aggregate_trades",
+    "aggregate_trades_by_count",
 ]

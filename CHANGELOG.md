@@ -3,6 +3,9 @@
 ## [Unreleased]
 
 ### Added
+- Trade data ingestion module (`data/trades.py`): `validate_trades()`, `aggregate_trades()`, `aggregate_trades_by_count()`
+- Time-based trade aggregation with OHLCV, buy/sell volume split, VWAP, unique traders, pool reserve, and optional USD conversion via exchange rate
+- Trade-count bar aggregation for irregular-activity tokens
 - Unified long-format data model: Engine accepts single DF, dict of DFs, or long-format DF with `symbol` column
 - `BacktestContext.symbols`, `BacktestContext.data`, and `BacktestContext.row()` method for multi-asset access
 - `Portfolio.rebalance(weights)` for atomic weight-based portfolio rebalancing

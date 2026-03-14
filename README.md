@@ -22,6 +22,7 @@ A lightweight, high-performance backtesting library for trading strategy develop
 - **Walk-forward analysis** — rolling and anchored train/test splits
 - **Advanced analysis** — Monte Carlo simulation, look-ahead bias detection, permutation testing
 - **Visualization** — interactive Plotly charts (price, equity, drawdown, trade markers, heatmaps)
+- **Trade data pipeline** — validate and aggregate raw DEX/AMM trades into OHLCV bars (time-based or trade-count), with buy/sell volume split, VWAP, and optional USD conversion
 - **Data utilities** — validation, cleaning, OHLCV resampling
 - **Optional TA-Lib integration** — wrap any TA-Lib function into Polars expressions
 
