@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.2.1] - 2026-03-14
 
 ### Added
 - AMM-aware slippage models (`slippage.py`): `SlippageModel` ABC, `FlatSlippage`, `AMMSlippage` with constant-product formula
