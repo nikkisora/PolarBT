@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- DeFi/memecoin indicators module (`indicators_defi.py`): `token_age`, `buy_sell_ratio`, `net_flow`, `trade_intensity`, `unique_trader_growth`, `pool_depth`, `price_impact_estimate`, `liquidity_ratio`, `launch_velocity`, `pump_detector`, `rug_pull_detector`
 - Dynamic universe support: `UniverseProvider` protocol with built-in `AllSymbols`, `AgeFilter`, `VolumeFilter`, `TopN`, `CompositeFilter`
 - Token lifecycle tracking: `BacktestContext.first_seen_bar`, `BacktestContext.bar_count`, `BacktestContext.available_symbols`
 - `Engine(universe_provider=...)` parameter for per-bar symbol filtering
