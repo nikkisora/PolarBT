@@ -23,7 +23,7 @@ A lightweight, high-performance backtesting library for trading strategy develop
 - **Walk-forward analysis** — rolling and anchored train/test splits
 - **Advanced analysis** — Monte Carlo simulation, look-ahead bias detection, permutation testing
 - **Visualization** — interactive Plotly charts (price, equity, drawdown, trade markers, heatmaps)
-- **AMM-aware execution** — pluggable `SlippageModel` with `FlatSlippage` and `AMMSlippage` (constant-product formula); `SOLANA_PUMPFUN` commission preset
+- **AMM-aware execution** — pluggable `SlippageModel` with `FlatSlippage` and `AMMSlippage` (constant-product formula)
 - **Exchange rate support** — `Engine(exchange_rate=...)` converts equity curve to USD; reports dual quote/USD metrics
 - **DeFi indicators** — `buy_sell_ratio`, `net_flow`, `trade_intensity`, `pump_detector`, `rug_pull_detector`, AMM `price_impact_estimate`, `liquidity_ratio`, and more
 - **Trade data pipeline** — validate and aggregate raw DEX/AMM trades into OHLCV bars (time-based or trade-count), with buy/sell volume split, VWAP, and optional USD conversion
@@ -153,6 +153,54 @@ print(result.trades.head())  # per-trade log
 print(result.next_actions)   # forward-looking rebalance actions
 ```
 
+## Trade Data & DeFi Backtesting
+
+PolarBT can ingest raw DEX/AMM trade data (e.g. Pump.fun on Solana), aggregate it into OHLCV bars, apply DeFi-specific indicators, and backtest with AMM-aware slippage — all in a single pipeline.
+
+```python
+import polars as pl
+from polarbt import Engine, Strategy, indicators_defi as defi
+from polarbt.core import BacktestContext
+from polarbt.data.trades import aggregate_trades, validate_trades
+from polarbt.slippage import AMMSlippage
+from polarbt.universe import AgeFilter, CompositeFilter, VolumeFilter
+
+# 1. Load and validate raw trades
+trades = pl.read_parquet("trades.parquet")
+assert validate_trades(trades.sort("symbol", "timestamp")).valid
+
+# 2. Aggregate to 5-minute OHLCV bars
+bars = aggregate_trades(trades.sort("symbol", "timestamp"), "5m", min_trades=3)
+
+# 3. Define a strategy using DeFi indicators
+class PumpMomentum(Strategy):
+    def preprocess(self, df: pl.DataFrame) -> pl.DataFrame:
+        return df.with_columns(
+            defi.buy_sell_ratio().over("symbol").alias("bs_ratio"),
+            defi.trade_intensity(window=10).over("symbol").alias("intensity"),
+        )
+
+    def next(self, ctx: BacktestContext) -> None:
+        for sym in ctx.symbols:
+            row = ctx.row(sym)
+            if row.get("bs_ratio", 0) > 0.7 and row.get("intensity", 0) > 2.0:
+                ctx.portfolio.order_target_percent(sym, 0.1)
+            elif row.get("bs_ratio", 0) < 0.3:
+                ctx.portfolio.close_position(sym)
+
+# 4. Run with AMM slippage and universe filtering
+engine = Engine(
+    PumpMomentum(),
+    bars,
+    initial_cash=100.0,        # in SOL
+    commission=0.01,
+    slippage=AMMSlippage(),    # uses pool_reserve_last from bar data
+    universe_provider=CompositeFilter(AgeFilter(min_bars=5), VolumeFilter(min_volume=1.0)),
+)
+results = engine.run()
+print(results)
+```
+
 ## Examples
 
 | Example | Description |
@@ -170,6 +218,7 @@ print(result.next_actions)   # forward-looking rebalance actions
 | [`example_commission.py`](examples/example_commission.py) | Commission model comparison |
 | [`example_multi_asset.py`](examples/example_multi_asset.py) | Multi-asset dict input |
 | [`example_weight_backtest.py`](examples/example_weight_backtest.py) | Weight-based portfolio backtest |
+| [`example_defi_trades.py`](examples/example_defi_trades.py) | DeFi trade data pipeline with AMM slippage |
 
 ## Documentation
 

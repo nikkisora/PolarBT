@@ -20,7 +20,6 @@ from polarbt.analysis import (
     permutation_test,
 )
 from polarbt.commissions import (
-    SOLANA_PUMPFUN,
     CommissionModel,
     CustomCommission,
     FixedPlusPercentCommission,
@@ -129,6 +128,5 @@ __all__ = [
     "SlippageModel",
     "FlatSlippage",
     "AMMSlippage",
-    "SOLANA_PUMPFUN",
     "indicators_defi",
 ]

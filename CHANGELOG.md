@@ -5,7 +5,6 @@
 ### Added
 - AMM-aware slippage models (`slippage.py`): `SlippageModel` ABC, `FlatSlippage`, `AMMSlippage` with constant-product formula
 - `Engine(slippage=...)` now accepts `float` or `SlippageModel` instance; bar data context passed to AMM model
-- `SOLANA_PUMPFUN` commission preset (0.000005 SOL base + 1% fee)
 - Exchange rate support: `Engine(exchange_rate=...)` with USD-denominated metrics (`final_equity_usd`, `total_return_usd`, `sharpe_ratio_usd`, `max_drawdown_usd`)
 - DeFi/memecoin indicators module (`indicators_defi.py`): `token_age`, `buy_sell_ratio`, `net_flow`, `trade_intensity`, `unique_trader_growth`, `pool_depth`, `price_impact_estimate`, `liquidity_ratio`, `launch_velocity`, `pump_detector`, `rug_pull_detector`
 - Dynamic universe support: `UniverseProvider` protocol with built-in `AllSymbols`, `AgeFilter`, `VolumeFilter`, `TopN`, `CompositeFilter`

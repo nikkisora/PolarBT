@@ -5,7 +5,6 @@ from datetime import datetime, timedelta
 import polars as pl
 import pytest
 
-from polarbt.commissions import SOLANA_PUMPFUN, FixedPlusPercentCommission
 from polarbt.core import BacktestContext, Engine, Strategy
 from polarbt.slippage import AMMSlippage, FlatSlippage, make_slippage_model
 
@@ -235,27 +234,6 @@ class TestSlippageEngineIntegration:
 
         # With slippage, we pay more for buys -> less final equity
         assert result_amm.final_equity < result_no_slip.final_equity
-
-
-# ===========================================================================
-# Phase 4.2: Commission preset
-# ===========================================================================
-
-
-class TestSolanaPumpfunPreset:
-    def test_preset_is_commission_model(self) -> None:
-        assert isinstance(SOLANA_PUMPFUN, FixedPlusPercentCommission)
-
-    def test_preset_values(self) -> None:
-        assert SOLANA_PUMPFUN.fixed == 0.000005
-        assert SOLANA_PUMPFUN.percent == 0.01
-
-    def test_preset_in_engine(self) -> None:
-        df = _make_single_asset_df()
-        strategy = BuyOnceStrategy()
-        engine = Engine(strategy, df, commission=SOLANA_PUMPFUN, warmup=0)
-        result = engine.run()
-        assert result.final_equity > 0
 
 
 # ===========================================================================
