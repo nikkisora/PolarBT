@@ -9,7 +9,7 @@ Features:
 - Parallel execution for evolutionary optimization
 """
 
-from polarbt import analysis, data, indicators, metrics
+from polarbt import analysis, data, indicators, indicators_defi, metrics
 from polarbt.analysis import (
     LookAheadResult,
     MonteCarloResult,
@@ -20,6 +20,7 @@ from polarbt.analysis import (
     permutation_test,
 )
 from polarbt.commissions import (
+    SOLANA_PUMPFUN,
     CommissionModel,
     CustomCommission,
     FixedPlusPercentCommission,
@@ -49,6 +50,7 @@ from polarbt.sizers import (
     Sizer,
     VolatilitySizer,
 )
+from polarbt.slippage import AMMSlippage, FlatSlippage, SlippageModel
 from polarbt.trades import Trade, TradeTracker
 from polarbt.universe import (
     AgeFilter,
@@ -124,4 +126,9 @@ __all__ = [
     "VolumeFilter",
     "TopN",
     "CompositeFilter",
+    "SlippageModel",
+    "FlatSlippage",
+    "AMMSlippage",
+    "SOLANA_PUMPFUN",
+    "indicators_defi",
 ]

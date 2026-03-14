@@ -21,6 +21,7 @@ import polars as pl
 from polarbt.commissions import CommissionModel, make_commission_model
 from polarbt.orders import Order, OrderStatus, OrderType
 from polarbt.results import BacktestMetrics, TradeStats, _backtest_metrics_from_dict
+from polarbt.slippage import SlippageModel, make_slippage_model
 from polarbt.trades import TradeTracker
 from polarbt.universe import UniverseContext, UniverseProvider
 
@@ -351,7 +352,7 @@ class Portfolio:
         self,
         initial_cash: float = 100_000.0,
         commission: float | tuple[float, float] | CommissionModel = 0.0,
-        slippage: float = 0.0,
+        slippage: float | SlippageModel = 0.0,
         order_delay: int = 0,
         bars_per_day: float | None = None,
         borrow_rate: float = 0.0,
@@ -426,7 +427,9 @@ class Portfolio:
             self.commission_fixed = 0.0
             self.commission_percent = commission
 
-        self.slippage = slippage
+        self.slippage_model = make_slippage_model(slippage)
+        # Keep legacy float attribute for backward compatibility
+        self.slippage = slippage if isinstance(slippage, (int, float)) else 0.0
         self.order_delay = order_delay
         self.bars_per_day = bars_per_day
         self.borrow_rate = borrow_rate
@@ -466,6 +469,7 @@ class Portfolio:
         self._current_ohlc: dict[str, dict[str, float]] = {}
         self._current_bar: int = 0
         self._current_timestamp: Any = None
+        self._current_bar_data: dict[str, dict[str, Any]] = {}
 
         # Order management
         self.orders: dict[str, Order] = {}
@@ -864,9 +868,8 @@ class Portfolio:
             return
 
         # Calculate new execution price with slippage
-        new_exec_price = (
-            intended_price * (1 + self.slippage) if order.is_buy() else intended_price * (1 - self.slippage)
-        )
+        slippage_ctx = self._current_bar_data.get(order.asset) if self._current_bar_data else None
+        new_exec_price = self.slippage_model.calculate(intended_price, abs(order.size), order.is_buy(), slippage_ctx)
 
         # Calculate cash difference
         size = abs(order.size)
@@ -1286,7 +1289,8 @@ class Portfolio:
             return False
 
         # Apply slippage
-        execution_price = price * (1 + self.slippage) if order.is_buy() else price * (1 - self.slippage)
+        slippage_ctx = self._current_bar_data.get(order.asset) if self._current_bar_data else None
+        execution_price = self.slippage_model.calculate(price, abs(order.size), order.is_buy(), slippage_ctx)
 
         # Enforce position size and exposure limits (skip for risk-reducing orders)
         if not order._risk_order and not self._is_order_risk_reducing(order.asset, order.size):
@@ -1596,7 +1600,7 @@ class Portfolio:
             return quantity_delta
 
         # Effective price after slippage
-        effective_price = price * (1 + self.slippage)
+        effective_price = self.slippage_model.calculate(price, quantity_delta, True)
 
         # Estimate per-unit commission by probing the commission model.
         # commission(q, p) is often proportional to q*p, but may have fixed
@@ -2538,7 +2542,7 @@ class Engine:
         data: pl.DataFrame | dict[str, pl.DataFrame],
         initial_cash: float = 100_000.0,
         commission: float | tuple[float, float] | CommissionModel = 0.0,
-        slippage: float = 0.0,
+        slippage: float | SlippageModel = 0.0,
         price_columns: dict[str, str] | None = None,
         warmup: int | str = "auto",
         order_delay: int = 0,
@@ -2553,6 +2557,7 @@ class Engine:
         fractional_shares: bool = True,
         factor_column: str | None = None,
         universe_provider: UniverseProvider | None = None,
+        exchange_rate: pl.DataFrame | None = None,
     ):
         """
         Initialize the backtesting engine.
@@ -2563,7 +2568,7 @@ class Engine:
             initial_cash: Starting cash balance
             commission: Commission specification. Accepts a percentage float, a (fixed, percent) tuple,
                        or a CommissionModel instance
-            slippage: Slippage rate as fraction
+            slippage: Slippage rate as fraction or a SlippageModel instance
             price_columns: Dict mapping asset names to price columns
                           (default: auto-detected for dict input, {"asset": "close"} for single DataFrame)
             warmup: Number of bars to skip before executing strategy, or "auto" to automatically
@@ -2583,6 +2588,9 @@ class Engine:
             universe_provider: Optional provider that filters tradeable symbols each bar.
                               When set, ``ctx.symbols`` contains only the filtered subset;
                               ``ctx.available_symbols`` contains all symbols with data.
+            exchange_rate: Optional DataFrame with ``(timestamp, rate)`` columns for
+                          quote-to-USD conversion. Rate is forward-filled to bar timestamps.
+                          When provided, BacktestMetrics includes USD-denominated metrics.
         """
         self.strategy = strategy
         self.initial_cash = initial_cash
@@ -2599,6 +2607,7 @@ class Engine:
         self.fractional_shares = fractional_shares
         self.factor_column = factor_column
         self.universe_provider = universe_provider
+        self.exchange_rate = exchange_rate
 
         # Validate warmup parameter
         if isinstance(warmup, str):
@@ -2862,6 +2871,7 @@ class Engine:
                         self.portfolio._factors[sym] = float(factor_val)
 
             # Update portfolio with ALL current prices (including filtered-out symbols)
+            self.portfolio._current_bar_data = bar_data
             self.portfolio.update_prices(current_prices, idx, ohlc_data, current_timestamp)
 
             # Determine tradeable universe
@@ -2906,6 +2916,52 @@ class Engine:
         # Calculate and return results
         self.results = self._calculate_results()
         return self.results
+
+    def _compute_usd_metrics(self, equity_df: pl.DataFrame, metrics: dict[str, Any]) -> None:
+        """Compute USD-denominated metrics by converting the equity curve.
+
+        Joins exchange rate data to the equity curve via forward-fill asof join,
+        then computes key metrics on the USD-converted equity.
+
+        Args:
+            equity_df: DataFrame with ``timestamp`` and ``equity`` columns.
+            metrics: Metrics dict to update with USD fields.
+        """
+        from polarbt.metrics import calculate_metrics
+
+        assert self.exchange_rate is not None
+        rate_df = self.exchange_rate.sort("timestamp").select(
+            pl.col("timestamp").alias("_rate_ts"),
+            pl.col("rate"),
+        )
+
+        usd_df = equity_df.sort("timestamp").join_asof(
+            rate_df,
+            left_on="timestamp",
+            right_on="_rate_ts",
+            strategy="backward",
+        )
+
+        if usd_df["rate"].null_count() == usd_df.height:
+            return
+
+        usd_df = usd_df.with_columns(
+            (pl.col("equity") * pl.col("rate").forward_fill()).alias("equity_usd"),
+        ).drop_nulls("equity_usd")
+
+        if usd_df.height == 0:
+            return
+
+        initial_equity_usd = float(usd_df["equity_usd"][0])
+        usd_metrics = calculate_metrics(
+            usd_df.select(pl.col("timestamp"), pl.col("equity_usd").alias("equity")),
+            initial_equity_usd,
+        )
+
+        metrics["final_equity_usd"] = float(usd_df["equity_usd"][-1])
+        metrics["total_return_usd"] = usd_metrics.get("total_return", 0.0)
+        metrics["sharpe_ratio_usd"] = usd_metrics.get("sharpe_ratio", 0.0)
+        metrics["max_drawdown_usd"] = usd_metrics.get("max_drawdown", 0.0)
 
     def _calculate_results(self) -> BacktestMetrics:
         """Calculate backtest metrics.
@@ -2995,5 +3051,9 @@ class Engine:
 
         liq = liquidity_metrics(trades_df, self.data)
         metrics.update({k: v for k, v in liq.items() if v is not None})
+
+        # USD-denominated metrics (Phase 5) — when exchange_rate is provided
+        if self.exchange_rate is not None and len(equity_df) > 0:
+            self._compute_usd_metrics(equity_df, metrics)
 
         return _backtest_metrics_from_dict(metrics, trade_stats)

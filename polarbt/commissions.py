@@ -201,3 +201,11 @@ def make_commission_model(commission: float | tuple[float, float] | CommissionMo
     if isinstance(commission, tuple):
         return FixedPlusPercentCommission(fixed=commission[0], percent=commission[1])
     return PercentCommission(rate=commission)
+
+
+# ---------------------------------------------------------------------------
+# Fee presets
+# ---------------------------------------------------------------------------
+
+#: Solana Pump.fun fee preset: ~0.000005 SOL base fee + 1% platform fee.
+SOLANA_PUMPFUN = FixedPlusPercentCommission(fixed=0.000005, percent=0.01)

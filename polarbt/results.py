@@ -139,6 +139,12 @@ class BacktestMetrics:
     sell_low_ratio: float | None = None
     capacity: float | None = None
 
+    # USD-denominated metrics (populated when exchange_rate is provided)
+    final_equity_usd: float | None = None
+    total_return_usd: float | None = None
+    sharpe_ratio_usd: float | None = None
+    max_drawdown_usd: float | None = None
+
     # Optional fields populated by backtest() / optimize_bayesian()
     params: dict[str, Any] | None = None
     success: bool | None = None
@@ -290,4 +296,8 @@ def _backtest_metrics_from_dict(metrics_dict: dict[str, Any], trade_stats: Trade
         buy_high_ratio=metrics_dict.get("buy_high_ratio"),
         sell_low_ratio=metrics_dict.get("sell_low_ratio"),
         capacity=metrics_dict.get("capacity"),
+        final_equity_usd=metrics_dict.get("final_equity_usd"),
+        total_return_usd=metrics_dict.get("total_return_usd"),
+        sharpe_ratio_usd=metrics_dict.get("sharpe_ratio_usd"),
+        max_drawdown_usd=metrics_dict.get("max_drawdown_usd"),
     )
