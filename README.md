@@ -18,6 +18,7 @@ A lightweight, high-performance backtesting library for trading strategy develop
 - **Position sizing** — fixed, percent, fixed-risk, Kelly, volatility-based
 - **Weight-based backtesting** — declarative portfolio allocation with `backtest_weights()` or `WeightStrategy`, rebalance scheduling, stop-loss/take-profit, next-actions output
 - **Multi-asset** — pass a dict of DataFrames or a long-format DataFrame with `symbol` column; all OHLC data preserved
+- **Dynamic universe** — `UniverseProvider` protocol filters tradeable symbols per bar; built-in `AgeFilter`, `VolumeFilter`, `TopN`, `CompositeFilter`; token lifecycle tracking via `ctx.first_seen_bar` / `ctx.bar_count`
 - **Parallel optimization** — grid search, multi-objective Pareto, Bayesian optimization
 - **Walk-forward analysis** — rolling and anchored train/test splits
 - **Advanced analysis** — Monte Carlo simulation, look-ahead bias detection, permutation testing

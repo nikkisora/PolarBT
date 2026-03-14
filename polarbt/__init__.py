@@ -50,6 +50,15 @@ from polarbt.sizers import (
     VolatilitySizer,
 )
 from polarbt.trades import Trade, TradeTracker
+from polarbt.universe import (
+    AgeFilter,
+    AllSymbols,
+    CompositeFilter,
+    TopN,
+    UniverseContext,
+    UniverseProvider,
+    VolumeFilter,
+)
 from polarbt.weight_backtest import WeightBacktestResult, backtest_weights
 
 try:
@@ -108,4 +117,11 @@ __all__ = [
     "OptimizeResult",
     "TradeStats",
     "plotting",
+    "UniverseProvider",
+    "UniverseContext",
+    "AllSymbols",
+    "AgeFilter",
+    "VolumeFilter",
+    "TopN",
+    "CompositeFilter",
 ]

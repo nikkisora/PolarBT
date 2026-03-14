@@ -3,6 +3,9 @@
 ## [Unreleased]
 
 ### Added
+- Dynamic universe support: `UniverseProvider` protocol with built-in `AllSymbols`, `AgeFilter`, `VolumeFilter`, `TopN`, `CompositeFilter`
+- Token lifecycle tracking: `BacktestContext.first_seen_bar`, `BacktestContext.bar_count`, `BacktestContext.available_symbols`
+- `Engine(universe_provider=...)` parameter for per-bar symbol filtering
 - Trade data ingestion module (`data/trades.py`): `validate_trades()`, `aggregate_trades()`, `aggregate_trades_by_count()`
 - Time-based trade aggregation with OHLCV, buy/sell volume split, VWAP, unique traders, pool reserve, and optional USD conversion via exchange rate
 - Trade-count bar aggregation for irregular-activity tokens

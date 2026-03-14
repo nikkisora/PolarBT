@@ -22,6 +22,7 @@ from polarbt.commissions import CommissionModel, make_commission_model
 from polarbt.orders import Order, OrderStatus, OrderType
 from polarbt.results import BacktestMetrics, TradeStats, _backtest_metrics_from_dict
 from polarbt.trades import TradeTracker
+from polarbt.universe import UniverseContext, UniverseProvider
 
 DEFAULT_ASSET_NAME = "asset"
 
@@ -309,10 +310,13 @@ class BacktestContext:
         timestamp: Current timestamp.
         bar_index: Current bar index in the dataset.
         portfolio: Reference to the Portfolio instance.
-        symbols: Symbols with data on this bar.
+        symbols: Tradeable symbols on this bar (after universe filtering).
         data: Per-symbol bar data ``{symbol: {col: value, ...}}``.
         row: Dual-access helper — use ``ctx.row["close"]`` in single-asset mode
             or ``ctx.row("BTC")["close"]`` in multi-asset mode.
+        first_seen_bar: Bar index when each symbol first appeared in the data.
+        bar_count: Number of bars each symbol has been active so far.
+        available_symbols: All symbols with data on this bar (before universe filtering).
     """
 
     timestamp: Any
@@ -321,6 +325,9 @@ class BacktestContext:
     symbols: list[str]
     data: dict[str, dict[str, Any]]
     row: _RowAccessor = field(default_factory=lambda: _RowAccessor({}, []))  # set by Engine
+    first_seen_bar: dict[str, int] = field(default_factory=dict)
+    bar_count: dict[str, int] = field(default_factory=dict)
+    available_symbols: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         # Build _RowAccessor from data if not already set properly
@@ -2545,6 +2552,7 @@ class Engine:
         maintenance_margin: float | None = None,
         fractional_shares: bool = True,
         factor_column: str | None = None,
+        universe_provider: UniverseProvider | None = None,
     ):
         """
         Initialize the backtesting engine.
@@ -2572,6 +2580,9 @@ class Engine:
             fractional_shares: Whether to allow fractional share quantities (default True).
             factor_column: Optional column name for price adjustment factor. When set,
                           commissions are calculated on raw prices (adjusted_price / factor).
+            universe_provider: Optional provider that filters tradeable symbols each bar.
+                              When set, ``ctx.symbols`` contains only the filtered subset;
+                              ``ctx.available_symbols`` contains all symbols with data.
         """
         self.strategy = strategy
         self.initial_cash = initial_cash
@@ -2587,6 +2598,7 @@ class Engine:
         self.maintenance_margin = maintenance_margin
         self.fractional_shares = fractional_shares
         self.factor_column = factor_column
+        self.universe_provider = universe_provider
 
         # Validate warmup parameter
         if isinstance(warmup, str):
@@ -2802,6 +2814,10 @@ class Engine:
         # Pre-partition data by timestamp for efficient lookup
         grouped = processed_data.partition_by(timestamp_col, as_dict=True, maintain_order=True)
 
+        # Token lifecycle tracking
+        first_seen_bar: dict[str, int] = {}
+        bar_count: dict[str, int] = {}
+
         for idx, ts_value in enumerate(unique_timestamps):
             group_key = ts_value
             group_df = grouped.get(group_key)
@@ -2832,6 +2848,12 @@ class Engine:
 
             current_timestamp = ts_value
 
+            # Update token lifecycle tracking
+            for sym in bar_data:
+                if sym not in first_seen_bar:
+                    first_seen_bar[sym] = idx
+                bar_count[sym] = bar_count.get(sym, 0) + 1
+
             # Update factor data for commission calculation on raw prices
             if self.factor_column is not None:
                 for sym, row_dict in bar_data.items():
@@ -2839,11 +2861,25 @@ class Engine:
                     if factor_val is not None:
                         self.portfolio._factors[sym] = float(factor_val)
 
-            # Update portfolio with current prices and OHLC data
+            # Update portfolio with ALL current prices (including filtered-out symbols)
             self.portfolio.update_prices(current_prices, idx, ohlc_data, current_timestamp)
 
+            # Determine tradeable universe
+            available_symbols = list(bar_data.keys())
+            if self.universe_provider is not None:
+                universe_ctx = UniverseContext(
+                    timestamp=current_timestamp,
+                    bar_index=idx,
+                    available_symbols=available_symbols,
+                    bar_data=bar_data,
+                    first_seen_bar=first_seen_bar,
+                    bar_count=bar_count,
+                )
+                symbols_list = self.universe_provider.get_universe(universe_ctx)
+            else:
+                symbols_list = available_symbols
+
             # Create context for strategy
-            symbols_list = list(bar_data.keys())
             row_accessor = _RowAccessor(bar_data, symbols_list)
             ctx = BacktestContext(
                 timestamp=current_timestamp,
@@ -2852,6 +2888,9 @@ class Engine:
                 symbols=symbols_list,
                 data=bar_data,
                 row=row_accessor,
+                first_seen_bar=first_seen_bar,
+                bar_count=bar_count,
+                available_symbols=available_symbols,
             )
 
             # Call strategy logic (skip warmup period)
